@@ -74,6 +74,7 @@ Initial release.
 - Cassette file names are reduced to their basename, so a cassette name cannot
   traverse out of the configured directory.
 
+[1.4.0]: https://github.com/CleatSquad/php-http-replay/releases/tag/v1.4.0
 [1.3.0]: https://github.com/CleatSquad/php-http-replay/releases/tag/v1.3.0
 [1.2.0]: https://github.com/CleatSquad/php-http-replay/releases/tag/v1.2.0
 [1.1.1]: https://github.com/CleatSquad/php-http-replay/releases/tag/v1.1.1

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace CleatSquad\HttpReplay\Tests\Benchmark;
+namespace CleatSquad\HttpReplay\Tests\Unit\Engine;
 
 use CleatSquad\HttpReplay\Engine\HttpReplayEngine;
 use CleatSquad\HttpReplay\Enum\ExecutionMatchingMode;
@@ -14,14 +14,13 @@ use CleatSquad\HttpReplay\Sanitizer\DefaultSanitizer;
 use CleatSquad\HttpReplay\Storage\InMemoryCassetteStore;
 use GuzzleHttp\Psr7\Request;
 use GuzzleHttp\Psr7\Response;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
-final class MatchingPerformanceBenchmarkTest extends TestCase
+final class UnorderedMatchingAtScaleTest extends TestCase
 {
-    /**
-     * @dataProvider provideSizes
-     */
-    public function testCompareSequentialAndUnorderedPerformance(int $count): void
+    #[DataProvider('provideSizes')]
+    public function testSequentialAndUnorderedBothConsumeTheWholeCassette(int $count): void
     {
         $exchanges = [];
         $requests = [];
@@ -38,7 +37,7 @@ final class MatchingPerformanceBenchmarkTest extends TestCase
         $matcher = new DefaultRequestMatcher();
         $sanitizer = new DefaultSanitizer();
 
-        // 1. Benchmark Sequential Mode (in order)
+        // Sequential mode: requests arrive in recorded order.
         $seqEngine = new HttpReplayEngine(
             ExecutionMode::Replay,
             $store,
@@ -48,13 +47,11 @@ final class MatchingPerformanceBenchmarkTest extends TestCase
             matchingMode: ExecutionMatchingMode::Sequential
         );
 
-        $startSeq = microtime(true);
         foreach ($requests as $req) {
             $seqEngine->sendRequest($req);
         }
-        $timeSeq = microtime(true) - $startSeq;
 
-        // 2. Benchmark Unordered Mode (worst-case reverse order)
+        // Unordered mode: requests arrive reversed.
         $unorderEngine = new HttpReplayEngine(
             ExecutionMode::Replay,
             $store,
@@ -64,19 +61,20 @@ final class MatchingPerformanceBenchmarkTest extends TestCase
             matchingMode: ExecutionMatchingMode::Unordered
         );
 
-        $reverseRequests = array_reverse($requests);
-        $startUnorder = microtime(true);
-        foreach ($reverseRequests as $req) {
+        // Worst case for unordered matching: every request matches the last
+        // unconsumed exchange, so each lookup scans the whole remaining set.
+        foreach (array_reverse($requests) as $req) {
             $unorderEngine->sendRequest($req);
         }
-        $timeUnorder = microtime(true) - $startUnorder;
 
-        $this::assertCount($count, $seqEngine->stats()->unusedIndices === [] ? $requests : []);
-        $this::assertCount($count, $unorderEngine->stats()->unusedIndices === [] ? $requests : []);
+        $seqStats = $seqEngine->stats();
+        $this->assertSame($count, $seqStats->replayedCount);
+        $this->assertSame([], $seqStats->unusedIndices);
 
-        // Log benchmark stats silently via phpunit output assertion
-        $this::assertTrue($timeSeq >= 0);
-        $this::assertTrue($timeUnorder >= 0);
+        $unorderStats = $unorderEngine->stats();
+        $this->assertSame($count, $unorderStats->replayedCount);
+        $this->assertSame([], $unorderStats->unusedIndices);
+        $this->assertSame(ExecutionMatchingMode::Unordered, $unorderStats->matchingMode);
     }
 
     /**
