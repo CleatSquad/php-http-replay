@@ -1,0 +1,16 @@
+-
+    request:
+        method: POST
+        url: 'https://api.openai.com/v1/chat/completions'
+        headers:
+            Host: api.openai.com
+            Content-type: application/json
+        body: '{"model":"gpt-5","prompt":"Tell me a joke"}'
+    response:
+        status:
+            code: 200
+            message: OK
+        headers:
+            Content-Type: application/json
+        body: '{"id":"chatcmpl-mock123","choices":[{"message":{"role":"assistant","content":"Why did the PHP script cross the road? To execute on the other side!"}}]}'
+    index: 0

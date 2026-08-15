@@ -1,0 +1,16 @@
+-
+    request:
+        method: POST
+        url: 'https://api.openai.com/v1/chat/completions'
+        headers:
+            Host: api.openai.com
+            Content-type: application/json
+        body: '{"model":"gpt-5","messages":[{"role":"user","content":"Quel temps fait-il \u00e0 Paris ?"}]}'
+    response:
+        status:
+            code: 200
+            message: OK
+        headers:
+            Content-Type: application/json
+        body: '{"id":"chatcmpl-mocktool123","choices":[{"message":{"role":"assistant","content":null,"tool_calls":[{"id":"call_123","type":"function","function":{"name":"weather_tool","arguments":"{\"location\":\"Paris\"}"}}]}}]}'
+    index: 0

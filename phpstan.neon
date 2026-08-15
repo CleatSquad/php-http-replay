@@ -1,0 +1,13 @@
+parameters:
+    level: max
+    paths:
+        - src
+        - tests
+    ignoreErrors:
+        # guzzlehttp/promises 3.x declares PromiseInterface with invariant templates,
+        # so no concrete promise can satisfy PromiseInterface<ResponseInterface, mixed>,
+        # which is the very type GuzzleHttp\HandlerStack::create() requires of a handler.
+        -
+            identifier: return.type
+            path: src/Integration/Guzzle/GuzzleReplayHandler.php
+            count: 2

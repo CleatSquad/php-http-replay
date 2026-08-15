@@ -1,0 +1,9 @@
+---
+blank_issues_enabled: false
+contact_links:
+  - name: Documentation
+    url: https://github.com/CleatSquad/php-http-replay#readme
+    about: Check the README before opening an issue
+  - name: Discussions
+    url: https://github.com/CleatSquad/php-http-replay/discussions
+    about: Ask questions and share ideas in GitHub Discussions
