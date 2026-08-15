@@ -163,3 +163,42 @@ When no unconsumed exchange matches, the engine raises `UnorderedMismatchExcepti
 #### 3. `ReplayStats::$matchingMode`
 
 The stats snapshot reports the strategy the engine ran with. The property is appended to the constructor with a `Sequential` default, so code building a `ReplayStats` by hand keeps working.
+
+---
+
+## Upgrading from v1.4.0 to v2.0.0
+
+`v2.0.0` changes the cassette file format and the internals of exchange selection. Test suites that only consume the public API need no code change; the format change is what makes this a major release.
+
+### Breaking Changes
+
+#### 1. Cassettes are written with `"version": 2`
+
+`JsonCassetteStore` now writes schema version 2. It still reads version 1 cassettes, so nothing has to be converted by hand, but a cassette re-saved by this release is written as version 2 and **older releases of this package cannot read it**. If a cassette file is shared with a project still on v1.x, keep that project's cassettes out of a recording run until it is upgraded too.
+
+Version 2 files carry the SHA-256 `metadata.checksum` introduced in v1.2.0 and are written under an exclusive `flock`, so two processes recording into the same cassette no longer race on the temporary file.
+
+#### 2. Exchange selection moved behind `ExchangeSelectorInterface`
+
+`HttpReplayEngine` no longer walks the cassette itself: it asks an `ExchangeSelectorInterface` for a candidate. `SequentialExchangeSelector` and `UnorderedExchangeSelector` implement the two strategies, and the engine picks one from `ExecutionMatchingMode` exactly as before. Default behaviour is unchanged.
+
+You can now pass your own selector as the last constructor argument to implement a different strategy:
+
+```php
+$engine = new HttpReplayEngine(
+    ExecutionMode::Replay,
+    $store,
+    'my_cassette',
+    $matcher,
+    $sanitizer,
+    selector: new MyOwnExchangeSelector(),
+);
+```
+
+A selector receives the request, the recorded exchanges, the indices already consumed in this session and the matcher, and returns an `ExchangeSelectionResult` — a match, a mismatch with the closest candidate, or an exhausted sequence.
+
+### Added
+
+#### `MatchResult::toArray()`
+
+Alongside `toCliString()`, `toArray()` returns `['matched' => bool, 'differences' => array]` for a CI report that consumes JSON rather than console text.

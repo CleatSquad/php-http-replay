@@ -49,7 +49,8 @@ final class JsonCassetteStoreTest extends TestCase
 
         $loaded = $store->load('user_cassette');
         $this->assertNotNull($loaded);
-        $this->assertSame(1, $loaded->version());
+        // The store stamps the schema it writes, so a version 1 cassette is migrated.
+        $this->assertSame(JsonCassetteStore::CURRENT_SCHEMA_VERSION, $loaded->version());
         $this->assertCount(2, $loaded);
         $this->assertSame('unit-test', $loaded->metadata()['created_by']);
 

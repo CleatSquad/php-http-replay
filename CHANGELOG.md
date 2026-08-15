@@ -5,6 +5,20 @@ All notable changes to `cleatsquad/php-http-replay` will be documented in this f
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0] - 2026-08-15
+
+### BREAKING CHANGES
+
+- `JsonCassetteStore` writes schema `version: 2`. Version 1 cassettes are still read, and a cassette saved by this release is stamped version 2, so releases before 2.0.0 can no longer read it. The store stamps the schema itself: the version carried by a `Cassette` no longer decides what is written to disk.
+- `HttpReplayEngine` delegates exchange selection to `ExchangeSelectorInterface` instead of walking the cassette itself. Selection behaviour is unchanged for both matching modes.
+
+### Added
+
+- `ExchangeSelectorInterface` contract and `ExchangeSelectionResult` model for clean separation of exchange selection algorithms.
+- `SequentialExchangeSelector` and `UnorderedExchangeSelector` implementations, plus a `selector` constructor argument on `HttpReplayEngine` for a custom strategy.
+- `flock` exclusive write lock in `JsonCassetteStore::save()`, so two processes recording into the same cassette no longer race on the temporary file.
+- Structured `toArray()` method on `MatchResult` for CI machine readability.
+
 ## [1.4.0] - 2026-08-15
 
 ### Added
@@ -74,6 +88,7 @@ Initial release.
 - Cassette file names are reduced to their basename, so a cassette name cannot
   traverse out of the configured directory.
 
+[2.0.0]: https://github.com/CleatSquad/php-http-replay/releases/tag/v2.0.0
 [1.4.0]: https://github.com/CleatSquad/php-http-replay/releases/tag/v1.4.0
 [1.3.0]: https://github.com/CleatSquad/php-http-replay/releases/tag/v1.3.0
 [1.2.0]: https://github.com/CleatSquad/php-http-replay/releases/tag/v1.2.0
