@@ -17,7 +17,7 @@ use Psr\Http\Message\StreamFactoryInterface;
 
 final readonly class JsonCassetteStore implements CassetteStoreInterface
 {
-    private const CURRENT_SCHEMA_VERSION = 1;
+    public const CURRENT_SCHEMA_VERSION = 2;
 
     public function __construct(
         private string $baseDir,
@@ -60,7 +60,7 @@ final readonly class JsonCassetteStore implements CassetteStoreInterface
             throw InvalidCassetteException::malformed($filePath, 'Missing or invalid "version" integer field.');
         }
 
-        if ($version !== self::CURRENT_SCHEMA_VERSION) {
+        if ($version !== 1 && $version !== self::CURRENT_SCHEMA_VERSION) {
             throw InvalidCassetteException::unsupportedVersion($filePath, $version, self::CURRENT_SCHEMA_VERSION);
         }
 
@@ -128,15 +128,29 @@ final readonly class JsonCassetteStore implements CassetteStoreInterface
             throw new \RuntimeException('Failed to serialize cassette to JSON: ' . $e->getMessage(), 0, $e);
         }
 
-        // Atomic write via temp file
-        $tmpFile = $filePath . '.' . uniqid('tmp_', true);
-        if (file_put_contents($tmpFile, $json . "\n", LOCK_EX) === false) {
-            throw new \RuntimeException(sprintf('Failed to write temporary cassette file "%s"', $tmpFile));
+        // Atomic write via temp file with lock protection against race conditions
+        $lockPath = $filePath . '.lock';
+        $lockFp = fopen($lockPath, 'c+');
+        if ($lockFp !== false) {
+            flock($lockFp, \LOCK_EX);
         }
 
-        if (!rename($tmpFile, $filePath)) {
-            @unlink($tmpFile);
-            throw new \RuntimeException(sprintf('Failed to atomically rename cassette file to "%s"', $filePath));
+        try {
+            $tmpFile = $filePath . '.' . uniqid('tmp_', true);
+            if (file_put_contents($tmpFile, $json . "\n", LOCK_EX) === false) {
+                throw new \RuntimeException(sprintf('Failed to write temporary cassette file "%s"', $tmpFile));
+            }
+
+            if (!rename($tmpFile, $filePath)) {
+                @unlink($tmpFile);
+                throw new \RuntimeException(sprintf('Failed to atomically rename cassette file to "%s"', $filePath));
+            }
+        } finally {
+            if ($lockFp !== false) {
+                flock($lockFp, \LOCK_UN);
+                fclose($lockFp);
+                @unlink($lockPath);
+            }
         }
     }
 

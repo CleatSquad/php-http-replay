@@ -6,6 +6,7 @@ namespace CleatSquad\HttpReplay\Engine;
 
 use CleatSquad\HttpReplay\Contract\CassetteNamingStrategyInterface;
 use CleatSquad\HttpReplay\Contract\CassetteStoreInterface;
+use CleatSquad\HttpReplay\Contract\ExchangeSelectorInterface;
 use CleatSquad\HttpReplay\Contract\RequestMatcherInterface;
 use CleatSquad\HttpReplay\Contract\SanitizerInterface;
 use CleatSquad\HttpReplay\Enum\ExecutionMatchingMode;
@@ -19,18 +20,20 @@ use CleatSquad\HttpReplay\Model\Cassette;
 use CleatSquad\HttpReplay\Model\Exchange;
 use CleatSquad\HttpReplay\Model\MatchResult;
 use CleatSquad\HttpReplay\Model\ReplayStats;
+use CleatSquad\HttpReplay\Selector\SequentialExchangeSelector;
+use CleatSquad\HttpReplay\Selector\UnorderedExchangeSelector;
 use Psr\Http\Client\ClientInterface;
 use Psr\Http\Message\RequestInterface;
 use Psr\Http\Message\ResponseInterface;
 
 final class HttpReplayEngine implements ClientInterface
 {
-    private int $replayIndex = 0;
     private int $recordedCount = 0;
     /** @var array<int, bool> Cassette indices replayed during this session */
     private array $consumedIndices = [];
     /** @var array<int, bool> Cassette indices written during this session */
     private array $recordedIndices = [];
+    private readonly ExchangeSelectorInterface $selector;
 
     public function __construct(
         private readonly ExecutionMode $mode,
@@ -40,10 +43,16 @@ final class HttpReplayEngine implements ClientInterface
         private readonly SanitizerInterface $sanitizer,
         private readonly ?ClientInterface $realClient = null,
         private readonly ExecutionMatchingMode $matchingMode = ExecutionMatchingMode::Sequential,
+        ?ExchangeSelectorInterface $selector = null,
     ) {
         if ($this->realClient === null && ($this->mode === ExecutionMode::Record || $this->mode === ExecutionMode::Passthrough)) {
             throw new \LogicException(sprintf('Real HTTP client (PSR-18 ClientInterface) is required for %s mode.', $this->mode->value));
         }
+
+        $this->selector = $selector ?? match ($this->matchingMode) {
+            ExecutionMatchingMode::Sequential => new SequentialExchangeSelector(),
+            ExecutionMatchingMode::Unordered => new UnorderedExchangeSelector(),
+        };
     }
 
     public function stats(): ReplayStats
@@ -53,8 +62,6 @@ final class HttpReplayEngine implements ClientInterface
         $totalExchanges = $cassette !== null ? count($cassette->exchanges()) : 0;
         $replayedCount = count($this->consumedIndices);
 
-        // An exchange written during this session was never stale to begin with, so
-        // only exchanges the cassette already held and that went unused are reported.
         $unusedIndices = [];
         for ($i = 0; $i < $totalExchanges; $i++) {
             if (!isset($this->consumedIndices[$i]) && !isset($this->recordedIndices[$i])) {
@@ -109,80 +116,31 @@ final class HttpReplayEngine implements ClientInterface
         }
 
         $exchanges = $cassette->exchanges();
+        $result = $this->selector->select($request, $exchanges, $this->consumedIndices, $this->requestMatcher);
+
+        if ($result->isMatched() && $result->exchange !== null) {
+            $this->consumedIndices[$result->index] = true;
+
+            return $result->exchange->response();
+        }
+
+        if ($result->isExhausted) {
+            throw SequenceExhaustedException::forCassette($name, $result->index, count($exchanges));
+        }
 
         if ($this->matchingMode === ExecutionMatchingMode::Sequential) {
-            if (!array_key_exists($this->replayIndex, $exchanges)) {
-                throw SequenceExhaustedException::forCassette($name, $this->replayIndex, count($exchanges));
-            }
-
-            $recordedExchange = $exchanges[$this->replayIndex];
-            $matchResult = $this->requestMatcher->match($request, $recordedExchange);
-
-            if (!$matchResult->matched()) {
-                throw SequenceMismatchException::forSequenceMismatch($name, $this->replayIndex, $matchResult);
-            }
-
-            $this->consumedIndices[$this->replayIndex] = true;
-            $this->replayIndex++;
-
-            return $recordedExchange->response();
-        }
-
-        return $this->handleUnorderedReplay($request, $name, $exchanges);
-    }
-
-    /**
-     * @param list<Exchange> $exchanges
-     */
-    private function handleUnorderedReplay(RequestInterface $request, string $cassetteName, array $exchanges): ResponseInterface
-    {
-        $totalExchanges = count($exchanges);
-        $consumedCount = count($this->consumedIndices);
-
-        if ($consumedCount >= $totalExchanges) {
-            throw SequenceExhaustedException::forCassette($cassetteName, $totalExchanges, $totalExchanges);
-        }
-
-        $inspectedCount = 0;
-        $bestCandidateIndex = -1;
-        $bestMatchResult = null;
-        $fewestDiffCount = \PHP_INT_MAX;
-
-        foreach ($exchanges as $i => $recordedExchange) {
-            if (isset($this->consumedIndices[$i])) {
-                continue;
-            }
-
-            $inspectedCount++;
-            $matchResult = $this->requestMatcher->match($request, $recordedExchange);
-
-            if ($matchResult->matched()) {
-                $this->consumedIndices[$i] = true;
-                return $recordedExchange->response();
-            }
-
-            $diffCount = count($matchResult->differences());
-            if ($diffCount < $fewestDiffCount) {
-                $fewestDiffCount = $diffCount;
-                $bestCandidateIndex = $i;
-                $bestMatchResult = $matchResult;
-            }
-        }
-
-        if ($bestMatchResult === null) {
-            $bestCandidateIndex = 0;
-            $bestMatchResult = MatchResult::mismatch(['replay' => 'No unconsumed exchange candidate found in cassette.']);
+            throw SequenceMismatchException::forSequenceMismatch($name, $result->index, $result->matchResult);
         }
 
         throw UnorderedMismatchException::forUnorderedMismatch(
-            cassetteName: $cassetteName,
-            bestCandidateIndex: $bestCandidateIndex,
-            bestMatchResult: $bestMatchResult,
-            inspectedCount: $inspectedCount,
-            consumedCount: $consumedCount,
+            cassetteName: $name,
+            bestCandidateIndex: $result->index,
+            bestMatchResult: $result->matchResult,
+            inspectedCount: $result->inspectedCount,
+            consumedCount: count($this->consumedIndices),
             context: [
                 'matchingMode' => $this->matchingMode->value,
-                'totalExchanges' => $totalExchanges,
+                'totalExchanges' => count($exchanges),
             ]
         );
     }
@@ -195,31 +153,25 @@ final class HttpReplayEngine implements ClientInterface
 
         $name = $this->resolveCassetteName();
 
-        // 1. Send ORIGINAL unsanitized request via real client
         $response = $this->realClient->sendRequest($request);
 
-        // 2. Create sanitized copies for persistence ONLY
         $sanitizedRequest = $this->sanitizer->sanitizeRequest($request);
         $sanitizedResponse = $this->sanitizer->sanitizeResponse($response);
 
-        // 3. Load existing cassette or start fresh
         $existingCassette = $this->cassetteStore->load($name);
         $existingExchanges = $existingCassette !== null ? $existingCassette->exchanges() : [];
-        $version = $existingCassette !== null ? $existingCassette->version() : 1;
+        $version = \CleatSquad\HttpReplay\Storage\JsonCassetteStore::CURRENT_SCHEMA_VERSION;
         $metadata = $existingCassette !== null ? $existingCassette->metadata() : [];
 
-        // 4. Append new sanitized exchange
         $newExchange = new Exchange($sanitizedRequest, $sanitizedResponse);
         $updatedExchanges = [...$existingExchanges, $newExchange];
 
         $newCassette = new Cassette($version, $updatedExchanges, $metadata);
 
-        // 5. Save cassette atomically
         $this->cassetteStore->save($name, $newCassette);
         $this->recordedIndices[count($existingExchanges)] = true;
         $this->recordedCount++;
 
-        // 6. Return ORIGINAL unsanitized response
         return $response;
     }
 
@@ -229,39 +181,19 @@ final class HttpReplayEngine implements ClientInterface
         $existingCassette = $this->cassetteStore->load($name);
         $exchanges = $existingCassette !== null ? $existingCassette->exchanges() : [];
 
-        if ($this->matchingMode === ExecutionMatchingMode::Sequential) {
-            if (array_key_exists($this->replayIndex, $exchanges)) {
-                $recordedExchange = $exchanges[$this->replayIndex];
-                $matchResult = $this->requestMatcher->match($request, $recordedExchange);
-                if ($matchResult->matched()) {
-                    $this->consumedIndices[$this->replayIndex] = true;
-                    $this->replayIndex++;
+        if (count($exchanges) > 0) {
+            $result = $this->selector->select($request, $exchanges, $this->consumedIndices, $this->requestMatcher);
+            if ($result->isMatched() && $result->exchange !== null) {
+                $this->consumedIndices[$result->index] = true;
 
-                    return $recordedExchange->response();
-                }
-            }
-        } else {
-            foreach ($exchanges as $i => $recordedExchange) {
-                if (isset($this->consumedIndices[$i])) {
-                    continue;
-                }
-                $matchResult = $this->requestMatcher->match($request, $recordedExchange);
-                if ($matchResult->matched()) {
-                    $this->consumedIndices[$i] = true;
-
-                    return $recordedExchange->response();
-                }
+                return $result->exchange->response();
             }
         }
 
-        // On miss: record new exchange if realClient is present
         if ($this->realClient === null) {
             throw new \LogicException('Real HTTP client (PSR-18 ClientInterface) is required for RecordOnce mode when recording a missing exchange.');
         }
 
-        // The replay cursor is intentionally left untouched: a recorded exchange is
-        // appended at the end of the cassette and stays replayable for an identical
-        // request issued later by the same engine instance.
         return $this->handleRecord($request);
     }
 }

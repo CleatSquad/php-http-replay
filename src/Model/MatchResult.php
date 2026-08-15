@@ -41,6 +41,17 @@ final readonly class MatchResult
         return $this->differences;
     }
 
+    /**
+     * @return array{matched: bool, differences: array<string, string>}
+     */
+    public function toArray(): array
+    {
+        return [
+            'matched' => $this->matched,
+            'differences' => $this->differences,
+        ];
+    }
+
     /** Multi-line CLI diagnostic string for differences. */
     public function toCliString(bool $colorize = false): string
     {
