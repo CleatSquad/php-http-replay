@@ -76,6 +76,29 @@ try {
 }
 ```
 
-#### 6. Cassette Integrity Checksum Verification
+---
 
-`JsonCassetteStore` automatically computes a SHA-256 hash of recorded exchanges on `save()` and verifies it on `load()`. Existing cassettes generated in `v1.0.0` without a checksum field continue to load seamlessly.
+## Upgrading from v1.1.x to v1.2.0
+
+`v1.2.0` is **100% backward-compatible** with `v1.1.x`. No code changes are required for existing integrations.
+
+### Key Additions & New Capabilities
+
+#### 1. Cassette Integrity Checksum Verification
+
+`JsonCassetteStore` automatically computes a SHA-256 hash of recorded exchanges on `save()` and verifies it on `load()`. Existing cassettes generated in `v1.0.0` and `v1.1.x` without a checksum field continue to load seamlessly.
+
+The hash is stored under `metadata.checksum` as `sha256:<hash>` and is recomputed on every save, so appending exchanges in `Record` or `RecordOnce` mode keeps the cassette valid. Loading a file whose exchanges no longer match its checksum raises an `InvalidCassetteException`:
+
+```text
+Malformed cassette at "…/openai_chat.json": Cassette checksum mismatch.
+File content does not match its recorded checksum.
+```
+
+If you edit a cassette by hand, delete its `metadata.checksum` entry: a cassette without a checksum loads without verification and is stamped again on the next save.
+
+The checksum is stored unsigned inside the file it covers, so it detects corruption and accidental edits, not deliberate tampering.
+
+#### 2. Non-Seekable PSR-7 Stream Support
+
+`DefaultSanitizer` now returns a sanitized message carrying a fresh seekable stream when the incoming body is not seekable, so downstream consumers can still read it. Previously such a body was already consumed and read back as an empty string.
