@@ -116,8 +116,10 @@ final readonly class JsonCassetteStore implements CassetteStoreInterface
         $metadata = $cassette->metadata();
         $metadata['checksum'] = 'sha256:' . hash('sha256', (string) json_encode($serializedExchanges));
 
+        // The schema version describes the file this store writes, so it is the store
+        // that stamps it: a cassette loaded as version 1 is migrated on the next save.
         $payload = [
-            'version' => $cassette->version(),
+            'version' => self::CURRENT_SCHEMA_VERSION,
             'metadata' => $metadata,
             'exchanges' => $serializedExchanges,
         ];

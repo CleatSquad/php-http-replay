@@ -4,7 +4,7 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![PHP Version](https://img.shields.io/badge/php-%3E%3D8.2-777bb4.svg)](composer.json)
 
-Deterministic HTTP request recording and replay for PHP (v2.3.0 Architecture), built on PSR-7 and PSR-18.
+Deterministic HTTP request recording and replay for PHP built on PSR-7 and PSR-18.
 
 A test that calls a real API is slow, costs money, and fails for reasons that
 have nothing to do with your code. Record the exchange once, replay it forever
@@ -12,12 +12,12 @@ after: the same request returns the same response, offline, in milliseconds.
 When the request no longer matches what was recorded, you get told exactly
 which field differed — not just that something did.
 
-## Architecture v2.3.0
+## Architecture
 
-`php-http-replay` v2.3.0 introduces a decoupled pipeline architecture separating:
+`php-http-replay` separates the replay pipeline into four independent layers:
 - **Interception (`HttpReplayEngine`)**: PSR-18 client orchestrating replay, record, record-once, and passthrough modes.
-- **Selection (`ExchangeSelectorInterface`)**: Pluggable exchange selection strategies ([`SequentialExchangeSelector`](file:///var/www/html/concio/packages/http-replay/src/Selector/SequentialExchangeSelector.php), [`UnorderedExchangeSelector`](file:///var/www/html/concio/packages/http-replay/src/Selector/UnorderedExchangeSelector.php)).
-- **Matching (`RequestMatcherInterface`)**: Semantic JSON and HTTP request comparison producing detailed [`MatchResult`](file:///var/www/html/concio/packages/http-replay/src/Model/MatchResult.php) diagnostics.
+- **Selection (`ExchangeSelectorInterface`)**: Pluggable exchange selection strategies ([`SequentialExchangeSelector`](src/Selector/SequentialExchangeSelector.php), [`UnorderedExchangeSelector`](src/Selector/UnorderedExchangeSelector.php)).
+- **Matching (`RequestMatcherInterface`)**: Semantic JSON and HTTP request comparison producing detailed [`MatchResult`](src/Model/MatchResult.php) diagnostics.
 - **Cassette Format v2**: Versioned schema (`version: 2`) with SHA-256 checksum integrity and backward-compatible loading of legacy v1 cassettes.
 
 ## Installation

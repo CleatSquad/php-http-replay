@@ -62,6 +62,8 @@ final class HttpReplayEngine implements ClientInterface
         $totalExchanges = $cassette !== null ? count($cassette->exchanges()) : 0;
         $replayedCount = count($this->consumedIndices);
 
+        // An exchange written during this session was never stale to begin with, so
+        // only exchanges the cassette already held and that went unused are reported.
         $unusedIndices = [];
         for ($i = 0; $i < $totalExchanges; $i++) {
             if (!isset($this->consumedIndices[$i]) && !isset($this->recordedIndices[$i])) {
@@ -160,7 +162,7 @@ final class HttpReplayEngine implements ClientInterface
 
         $existingCassette = $this->cassetteStore->load($name);
         $existingExchanges = $existingCassette !== null ? $existingCassette->exchanges() : [];
-        $version = \CleatSquad\HttpReplay\Storage\JsonCassetteStore::CURRENT_SCHEMA_VERSION;
+        $version = $existingCassette !== null ? $existingCassette->version() : 1;
         $metadata = $existingCassette !== null ? $existingCassette->metadata() : [];
 
         $newExchange = new Exchange($sanitizedRequest, $sanitizedResponse);
@@ -194,6 +196,9 @@ final class HttpReplayEngine implements ClientInterface
             throw new \LogicException('Real HTTP client (PSR-18 ClientInterface) is required for RecordOnce mode when recording a missing exchange.');
         }
 
+        // No index is consumed here: the recorded exchange is appended at the end of
+        // the cassette and stays replayable for an identical request issued later by
+        // the same engine instance.
         return $this->handleRecord($request);
     }
 }

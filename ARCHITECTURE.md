@@ -1,6 +1,6 @@
-# Architecture v2.3.0
+# Architecture v2.0.0
 
-`php-http-replay` v2.3.0 is a zero-dependency, deterministic HTTP request replay engine built on PSR-7 and PSR-18.
+`php-http-replay` v2.0.0 is a zero-dependency, deterministic HTTP request replay engine built on PSR-7 and PSR-18.
 
 ## Pipeline Flow
 

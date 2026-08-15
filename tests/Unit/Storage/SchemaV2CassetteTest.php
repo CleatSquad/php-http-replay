@@ -46,6 +46,18 @@ final class SchemaV2CassetteTest extends TestCase
         $this::assertSame(2, $data['version']);
     }
 
+    public function testSavingALegacyCassetteMigratesItToSchemaVersion2(): void
+    {
+        $exchange = new Exchange(new Request('GET', 'https://api.example.com/v1'), new Response(200, [], 'Legacy'));
+
+        $this->store->save('migrated', new Cassette(1, [$exchange]));
+
+        $loaded = $this->store->load('migrated');
+        $this->assertNotNull($loaded);
+        $this->assertSame(JsonCassetteStore::CURRENT_SCHEMA_VERSION, $loaded->version());
+        $this->assertSame('Legacy', (string) $loaded->exchanges()[0]->response()->getBody());
+    }
+
     public function testLoadsLegacyVersion1Cassette(): void
     {
         $v1Json = json_encode([
