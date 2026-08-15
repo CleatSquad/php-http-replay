@@ -69,8 +69,38 @@ final class CassetteChecksumTest extends TestCase
         file_put_contents($filePath, $tamperedContent);
 
         $this->expectException(InvalidCassetteException::class);
-        $this->expectExceptionMessage('Cassette checksum mismatch. File may be corrupted or tampered.');
+        $this->expectExceptionMessage('Cassette checksum mismatch. File content does not match its recorded checksum.');
 
         $store->load('tamper_test');
+    }
+
+    public function testChecksumIsRecomputedWhenExchangesAreAppended(): void
+    {
+        $store = new JsonCassetteStore($this->tempDir);
+        $first = new Exchange(
+            new Request('GET', 'https://api.example.com/first'),
+            new Response(200, [], '{"n":1}')
+        );
+
+        $store->save('append_test', new Cassette(1, [$first]));
+
+        $loaded = $store->load('append_test');
+        $this->assertNotNull($loaded);
+
+        // Appending an exchange is what Record and RecordOnce modes do: the stale
+        // checksum carried in the metadata must not survive the second save.
+        $second = new Exchange(
+            new Request('GET', 'https://api.example.com/second'),
+            new Response(200, [], '{"n":2}')
+        );
+        $store->save('append_test', new Cassette(
+            $loaded->version(),
+            [...$loaded->exchanges(), $second],
+            $loaded->metadata()
+        ));
+
+        $reloaded = $store->load('append_test');
+        $this->assertNotNull($reloaded);
+        $this->assertCount(2, $reloaded->exchanges());
     }
 }

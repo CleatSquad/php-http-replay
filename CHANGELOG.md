@@ -15,6 +15,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Explicit JSON path sanitization in `DefaultSanitizer`: Support for `sensitiveJsonPaths` (e.g. `$.user.profile.token` or `payment.card.number`) with recursive array and nested object traversal. The parameter is appended at the end of the constructor signature, so positional calls written against 1.0.0 keep working; it is meant to be passed as a named argument.
 - CLI diagnostic formatting: `toCliString(bool $colorize = false)` on `Difference`, `MatchResult`, and `RequestMismatchException`.
 - Typed sequence exceptions: `SequenceExhaustedException` and `SequenceMismatchException` for granular sequence reporting in CI.
+- Cassette integrity checksum: `JsonCassetteStore` stamps every cassette with a `metadata.checksum` entry (`sha256:<hash>` over the recorded exchanges) and rejects a file whose content no longer matches it with an `InvalidCassetteException`. The checksum is recomputed on each save and detects corruption or accidental edits; being stored unsigned in the file it covers, it is not a protection against deliberate tampering. Cassettes written before this release carry no checksum and are loaded without verification.
+
+### Fixed
+
+- `DefaultSanitizer` no longer returns an unreadable body when the incoming PSR-7 stream is not seekable: the sanitized message carries a fresh seekable stream so downstream consumers can read it.
 
 ## [1.0.0] - 2026-08-15
 

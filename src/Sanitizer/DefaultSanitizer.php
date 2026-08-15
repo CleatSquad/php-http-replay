@@ -51,15 +51,15 @@ final class DefaultSanitizer implements SanitizerInterface
      * @param list<string> $sensitiveBodyKeys JSON object keys to mask recursively
      * @param list<string> $sensitiveQueryParams URI query parameter names to mask (case-insensitive)
      * @param string $replacement Masking string replacement
-     * @param list<string> $sensitiveJsonPaths Explicit JSON paths/pointers to mask (dot notation, e.g. "$.user.profile.token")
+     * @param list<string> $sensitiveJsonPaths Explicit JSON paths to mask (dot notation, e.g. "$.user.profile.token"); pass it as a named argument
      */
     public function __construct(
         private readonly array $sensitiveHeaders = self::DEFAULT_SENSITIVE_HEADERS,
         private readonly array $sensitiveBodyKeys = self::DEFAULT_SENSITIVE_BODY_KEYS,
         private readonly array $sensitiveQueryParams = self::DEFAULT_SENSITIVE_QUERY_PARAMS,
         private readonly string $replacement = '[REDACTED]',
-        private readonly array $sensitiveJsonPaths = [],
         private readonly ?StreamFactoryInterface $streamFactory = null,
+        private readonly array $sensitiveJsonPaths = [],
     ) {
     }
 
