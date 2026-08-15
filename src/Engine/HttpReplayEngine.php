@@ -150,6 +150,7 @@ final class HttpReplayEngine implements ClientInterface
 
         // 5. Save cassette atomically
         $this->cassetteStore->save($name, $newCassette);
+        $this->recordedIndices[count($existingExchanges)] = true;
         $this->recordedCount++;
 
         // 6. Return ORIGINAL unsanitized response

@@ -13,6 +13,7 @@ use CleatSquad\HttpReplay\Exception\RequestMismatchException;
 use CleatSquad\HttpReplay\Matcher\DefaultRequestMatcher;
 use CleatSquad\HttpReplay\Model\Cassette;
 use CleatSquad\HttpReplay\Model\Exchange;
+use CleatSquad\HttpReplay\Storage\InMemoryCassetteStore;
 use GuzzleHttp\Psr7\Request;
 use GuzzleHttp\Psr7\Response;
 use PHPUnit\Framework\Attributes\CoversClass;
@@ -251,7 +252,7 @@ final class HttpReplayEngineTest extends TestCase
         );
     }
 
-    public function testEngineStatsInReplayAndRecordModes(): void
+    public function testEngineStatsInReplayMode(): void
     {
         $req1 = new Request('GET', 'https://api.example.com/1');
         $res1 = new Response(200, [], 'res1');
@@ -302,5 +303,34 @@ final class HttpReplayEngineTest extends TestCase
         $this->assertSame(2, $statsFinal->replayedCount);
         $this->assertSame([], $statsFinal->unusedIndices);
         $this->assertTrue($statsFinal->isFullyConsumed());
+    }
+
+    public function testEngineStatsDoesNotReportFreshlyRecordedExchangesAsUnused(): void
+    {
+        $realClient = $this->createMock(ClientInterface::class);
+        $realClient->method('sendRequest')->willReturn(new Response(200, [], 'recorded'));
+
+        $sanitizer = $this->createMock(SanitizerInterface::class);
+        $sanitizer->method('sanitizeRequest')->willReturnArgument(0);
+        $sanitizer->method('sanitizeResponse')->willReturnArgument(0);
+
+        $engine = new HttpReplayEngine(
+            ExecutionMode::Record,
+            new InMemoryCassetteStore(),
+            'recording_cassette',
+            $this->matcher,
+            $sanitizer,
+            $realClient
+        );
+
+        $engine->sendRequest(new Request('GET', 'https://api.example.com/1'));
+        $engine->sendRequest(new Request('GET', 'https://api.example.com/2'));
+
+        $stats = $engine->stats();
+        $this->assertSame(2, $stats->totalExchanges);
+        $this->assertSame(2, $stats->recordedCount);
+        $this->assertSame(0, $stats->replayedCount);
+        $this->assertSame([], $stats->unusedIndices);
+        $this->assertFalse($stats->hasUnusedExchanges());
     }
 }

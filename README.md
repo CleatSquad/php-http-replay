@@ -124,6 +124,10 @@ if ($stats->isFullyConsumed()) {
 }
 ```
 
+`unusedIndices` lists the exchanges the cassette already held and that were never
+replayed, which is what a stale cassette looks like. An exchange recorded during
+the session by `Record` or `RecordOnce` is never counted as unused.
+
 ### Cassette Naming Strategies
 
 Use `CassetteNamingStrategyInterface` for dynamic cassette resolution:

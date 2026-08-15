@@ -5,11 +5,11 @@ All notable changes to `cleatsquad/php-http-replay` will be documented in this f
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.3.0] - Unreleased
+## [1.3.0] - 2026-08-15
 
 ### Added
 
-- `ReplayStats` model and `HttpReplayEngine::stats()` inspection method: Allows auditing cassette consumption during test sessions (`replayedCount`, `recordedCount`, `unusedIndices`, `isFullyConsumed()`, `hasUnusedExchanges()`).
+- `ReplayStats` model and `HttpReplayEngine::stats()` inspection method: Audits cassette consumption during a test session (`cassetteName`, `totalExchanges`, `replayedCount`, `recordedCount`, `unusedIndices`, `isFullyConsumed()`, `hasUnusedExchanges()`). `unusedIndices` reports only exchanges the cassette already held and that were never replayed, so an exchange recorded during the session is not counted as unused.
 
 ## [1.2.0] - 2026-08-15
 
@@ -65,6 +65,7 @@ Initial release.
 - Cassette file names are reduced to their basename, so a cassette name cannot
   traverse out of the configured directory.
 
+[1.3.0]: https://github.com/CleatSquad/php-http-replay/releases/tag/v1.3.0
 [1.2.0]: https://github.com/CleatSquad/php-http-replay/releases/tag/v1.2.0
 [1.1.1]: https://github.com/CleatSquad/php-http-replay/releases/tag/v1.1.1
 [1.0.0]: https://github.com/CleatSquad/php-http-replay/releases/tag/v1.0.0
