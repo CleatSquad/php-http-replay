@@ -15,7 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `DefaultSanitizer` no longer returns an unreadable body when the incoming PSR-7 stream is not seekable: the sanitized message carries a fresh seekable stream so downstream consumers can read it.
 
-## [1.1.0] - 2026-08-15
+## [1.1.1] - 2026-08-15
 
 ### Added
 
@@ -59,4 +59,6 @@ Initial release.
 - Cassette file names are reduced to their basename, so a cassette name cannot
   traverse out of the configured directory.
 
+[1.2.0]: https://github.com/CleatSquad/php-http-replay/releases/tag/v1.2.0
+[1.1.1]: https://github.com/CleatSquad/php-http-replay/releases/tag/v1.1.1
 [1.0.0]: https://github.com/CleatSquad/php-http-replay/releases/tag/v1.0.0

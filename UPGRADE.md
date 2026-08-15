@@ -4,9 +4,9 @@ This guide details backward compatibility notes and migration instructions for `
 
 ---
 
-## Upgrading from v1.0.0 to v1.1.0
+## Upgrading from v1.0.0 to v1.1.1
 
-`v1.1.0` is **100% backward-compatible** with `v1.0.0`. No code changes are required for existing integrations.
+`v1.1.1` is **100% backward-compatible** with `v1.0.0`. No code changes are required for existing integrations.
 
 ### Key Additions & New Capabilities
 
@@ -78,15 +78,15 @@ try {
 
 ---
 
-## Upgrading from v1.1.x to v1.2.0
+## Upgrading from v1.1.1 to v1.2.0
 
-`v1.2.0` is **100% backward-compatible** with `v1.1.x`. No code changes are required for existing integrations.
+`v1.2.0` is **100% backward-compatible** with `v1.1.1`. No code changes are required for existing integrations.
 
 ### Key Additions & New Capabilities
 
 #### 1. Cassette Integrity Checksum Verification
 
-`JsonCassetteStore` automatically computes a SHA-256 hash of recorded exchanges on `save()` and verifies it on `load()`. Existing cassettes generated in `v1.0.0` and `v1.1.x` without a checksum field continue to load seamlessly.
+`JsonCassetteStore` automatically computes a SHA-256 hash of recorded exchanges on `save()` and verifies it on `load()`. Existing cassettes generated in `v1.0.0` and `v1.1.1` without a checksum field continue to load seamlessly.
 
 The hash is stored under `metadata.checksum` as `sha256:<hash>` and is recomputed on every save, so appending exchanges in `Record` or `RecordOnce` mode keeps the cassette valid. Loading a file whose exchanges no longer match its checksum raises an `InvalidCassetteException`:
 
