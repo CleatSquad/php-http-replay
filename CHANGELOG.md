@@ -5,7 +5,17 @@ All notable changes to `cleatsquad/php-http-replay` will be documented in this f
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.1.0] - 2026-08-15
+## [1.2.0] - 2026-08-15
+
+### Added
+
+- Cassette integrity checksum: `JsonCassetteStore` stamps every cassette with a `metadata.checksum` entry (`sha256:<hash>` over the recorded exchanges) and rejects a file whose content no longer matches it with an `InvalidCassetteException`. The checksum is recomputed on each save, so appending exchanges in `Record` or `RecordOnce` mode keeps the cassette valid. It detects corruption and accidental edits; being stored unsigned in the file it covers, it is not a protection against deliberate tampering. Cassettes written before this release carry no checksum and are loaded without verification.
+
+### Fixed
+
+- `DefaultSanitizer` no longer returns an unreadable body when the incoming PSR-7 stream is not seekable: the sanitized message carries a fresh seekable stream so downstream consumers can read it.
+
+## [1.1.1] - 2026-08-15
 
 ### Added
 
@@ -49,4 +59,6 @@ Initial release.
 - Cassette file names are reduced to their basename, so a cassette name cannot
   traverse out of the configured directory.
 
+[1.2.0]: https://github.com/CleatSquad/php-http-replay/releases/tag/v1.2.0
+[1.1.1]: https://github.com/CleatSquad/php-http-replay/releases/tag/v1.1.1
 [1.0.0]: https://github.com/CleatSquad/php-http-replay/releases/tag/v1.0.0

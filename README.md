@@ -23,6 +23,8 @@ Requires PHP 8.2 or later. The core depends on PSR interfaces only
 (`psr/http-message`, `psr/http-client`, `psr/http-factory`); Guzzle and
 Symfony YAML are optional and used only by the integration and import layers.
 
+See [UPGRADE.md](UPGRADE.md) for upgrade notes and compatibility guides between major/minor versions.
+
 ## Usage
 
 ```php
@@ -100,9 +102,9 @@ $sanitizer = new DefaultSanitizer(
 );
 ```
 
-### Storage Backends
+### Storage Backends & Checksum Integrity
 
-- `JsonCassetteStore` : Writes UTF-8 JSON atomically through a temporary file and `LOCK_EX` rename, stamped with a schema version.
+- `JsonCassetteStore` : Writes UTF-8 JSON atomically through a temporary file and `LOCK_EX` rename, stamped with a schema version and automatic SHA-256 integrity checksum (`sha256:<hash>`).
 - `InMemoryCassetteStore` : RAM-only cassette store for fast, zero-I/O unit tests.
 
 ### Cassette Naming Strategies
@@ -148,7 +150,7 @@ except `src/Internal/`, which is excluded and may change in any release.
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md). Bug reports and pull requests are
+See [CONTRIBUTING.md](CONTRIBUTING.md) and [UPGRADE.md](UPGRADE.md). Bug reports and pull requests are
 welcome.
 
 ## License

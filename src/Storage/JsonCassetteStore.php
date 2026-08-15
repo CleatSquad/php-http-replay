@@ -71,6 +71,18 @@ final readonly class JsonCassetteStore implements CassetteStoreInterface
 
         $metadata = DecodedValue::asStringKeyedMap($decoded['metadata'] ?? null);
 
+        // Verify cassette integrity checksum if present in metadata. The checksum is
+        // stored in the file it covers and is not signed, so it detects corruption
+        // and accidental edits, not deliberate tampering.
+        $checksumVal = $metadata['checksum'] ?? null;
+        if (is_string($checksumVal) && str_starts_with($checksumVal, 'sha256:')) {
+            $expectedHash = substr($checksumVal, 7);
+            $actualHash = hash('sha256', (string) json_encode($exchangesData));
+            if ($expectedHash !== $actualHash) {
+                throw InvalidCassetteException::malformed($filePath, 'Cassette checksum mismatch. File content does not match its recorded checksum.');
+            }
+        }
+
         $exchanges = [];
         foreach ($exchangesData as $index => $item) {
             if (!is_array($item)) {
@@ -98,9 +110,15 @@ final readonly class JsonCassetteStore implements CassetteStoreInterface
             $serializedExchanges[] = $this->serializeExchange($exchange);
         }
 
+        // The checksum is derived from the exchanges, never carried over: a cassette
+        // reloaded, appended to and saved again would otherwise keep the checksum of
+        // its previous content and fail verification on the next load.
+        $metadata = $cassette->metadata();
+        $metadata['checksum'] = 'sha256:' . hash('sha256', (string) json_encode($serializedExchanges));
+
         $payload = [
             'version' => $cassette->version(),
-            'metadata' => $cassette->metadata(),
+            'metadata' => $metadata,
             'exchanges' => $serializedExchanges,
         ];
 

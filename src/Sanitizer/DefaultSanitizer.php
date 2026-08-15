@@ -51,7 +51,7 @@ final class DefaultSanitizer implements SanitizerInterface
      * @param list<string> $sensitiveBodyKeys JSON object keys to mask recursively
      * @param list<string> $sensitiveQueryParams URI query parameter names to mask (case-insensitive)
      * @param string $replacement Masking string replacement
-     * @param list<string> $sensitiveJsonPaths Explicit JSON paths to mask (e.g. "$.user.profile.token")
+     * @param list<string> $sensitiveJsonPaths Explicit JSON paths to mask (dot notation, e.g. "$.user.profile.token"); pass it as a named argument
      */
     public function __construct(
         private readonly array $sensitiveHeaders = self::DEFAULT_SENSITIVE_HEADERS,
@@ -99,6 +99,9 @@ final class DefaultSanitizer implements SanitizerInterface
         $bodyStr = (string) $request->getBody();
         if ($request->getBody()->isSeekable()) {
             $request->getBody()->rewind();
+        } elseif ($bodyStr !== '') {
+            // Non-seekable stream: replace body with fresh seekable stream so downstream can consume it
+            $sanitized = $sanitized->withBody($this->createStream($bodyStr, $request->getBody()));
         }
 
         if ($this->isValidJson($bodyStr)) {
@@ -130,6 +133,9 @@ final class DefaultSanitizer implements SanitizerInterface
         $bodyStr = (string) $response->getBody();
         if ($response->getBody()->isSeekable()) {
             $response->getBody()->rewind();
+        } elseif ($bodyStr !== '') {
+            // Non-seekable stream: replace body with fresh seekable stream so downstream can consume it
+            $sanitized = $sanitized->withBody($this->createStream($bodyStr, $response->getBody()));
         }
 
         if ($this->isValidJson($bodyStr)) {
@@ -187,40 +193,18 @@ final class DefaultSanitizer implements SanitizerInterface
         }
 
         foreach ($this->sensitiveJsonPaths as $rawPath) {
-            $segments = $this->parseJsonPath((string) $rawPath);
-            if (count($segments) === 0) {
-                continue;
+            $cleanPath = (string) $rawPath;
+            if (str_starts_with($cleanPath, '$.')) {
+                $cleanPath = substr($cleanPath, 2);
+            } elseif (str_starts_with($cleanPath, '$')) {
+                $cleanPath = substr($cleanPath, 1);
             }
 
+            $segments = explode('.', $cleanPath);
             $data = $this->redactPathSegment($data, $segments);
         }
 
         return $data;
-    }
-
-    /**
-     * Splits "$.user.profile.token" or "payment.card.number" into its key segments.
-     *
-     * Only the leading root marker is stripped, so a key named "$ref" or a path
-     * segment starting with a dot is preserved.
-     *
-     * @return list<string>
-     */
-    private function parseJsonPath(string $rawPath): array
-    {
-        $path = $rawPath;
-        if (str_starts_with($path, '$')) {
-            $path = substr($path, 1);
-        }
-        if (str_starts_with($path, '.')) {
-            $path = substr($path, 1);
-        }
-
-        if ($path === '') {
-            return [];
-        }
-
-        return explode('.', $path);
     }
 
     /**
