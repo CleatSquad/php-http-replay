@@ -126,3 +126,40 @@ $this->assertFalse($stats->hasUnusedExchanges(), sprintf(
 ```
 
 `unusedIndices` covers only exchanges that were already in the cassette and were never replayed; exchanges recorded during the session by `Record` or `RecordOnce` are not reported as unused. Reading the stats loads the cassette from the store, so call it once per assertion rather than in a loop.
+
+---
+
+## Upgrading from v1.3.0 to v1.4.0
+
+`v1.4.0` is **100% backward-compatible** with `v1.3.0`. Matching stays sequential unless you opt in, so no code changes are required for existing integrations.
+
+### Key Additions & New Capabilities
+
+#### 1. Opt-In Unordered Matching (`ExecutionMatchingMode`)
+
+Pass `matchingMode: ExecutionMatchingMode::Unordered` when the order in which your suite dispatches requests is not deterministic:
+
+```php
+use CleatSquad\HttpReplay\Enum\ExecutionMatchingMode;
+
+$engine = new HttpReplayEngine(
+    ExecutionMode::Replay,
+    $store,
+    'my_cassette',
+    $matcher,
+    $sanitizer,
+    matchingMode: ExecutionMatchingMode::Unordered,
+);
+```
+
+Each recorded exchange is still consumed at most once, so repeated identical requests keep getting distinct recorded responses. `Replay` and `RecordOnce` honour the mode; `Record` and `Passthrough` are unaffected by it.
+
+Matching is O(1) per request in `Sequential` mode and up to O(N) in `Unordered` mode, N being the number of exchanges in the cassette. Keep `Sequential` for large cassettes.
+
+#### 2. `UnorderedMismatchException`
+
+When no unconsumed exchange matches, the engine raises `UnorderedMismatchException` instead of a sequence exception. It extends `RequestMismatchException`, so an existing `catch` block still catches it, and adds `inspectedCount()`, `consumedCount()`, `bestCandidateIndex()` and `context()` for diagnosing which recorded exchange came closest.
+
+#### 3. `ReplayStats::$matchingMode`
+
+The stats snapshot reports the strategy the engine ran with. The property is appended to the constructor with a `Sequential` default, so code building a `ReplayStats` by hand keeps working.

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace CleatSquad\HttpReplay\Model;
 
+use CleatSquad\HttpReplay\Enum\ExecutionMatchingMode;
+
 final readonly class ReplayStats
 {
     /**
@@ -12,6 +14,7 @@ final readonly class ReplayStats
      * @param int $replayedCount Number of exchanges replayed during the session
      * @param int $recordedCount Number of exchanges newly recorded during the session
      * @param list<int> $unusedIndices List of 0-based exchange indices in the cassette that were never replayed
+     * @param ExecutionMatchingMode $matchingMode Matching mode the engine ran with
      */
     public function __construct(
         public string $cassetteName,
@@ -19,6 +22,7 @@ final readonly class ReplayStats
         public int $replayedCount,
         public int $recordedCount,
         public array $unusedIndices,
+        public ExecutionMatchingMode $matchingMode = ExecutionMatchingMode::Sequential,
     ) {
     }
 

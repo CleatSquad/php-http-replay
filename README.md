@@ -60,6 +60,28 @@ $response = $client->post('https://api.openai.com/v1/chat/completions', [
 - `ExecutionMode::RecordOnce` : Replays if a matching exchange exists in the cassette; executes real network call, sanitizes, and appends to cassette if missing.
 - `ExecutionMode::Passthrough` : Bypasses the replay engine and performs live HTTP calls without modifying cassettes.
 
+### Matching Modes & Strategies
+
+By default, requests are matched sequentially (`ExecutionMatchingMode::Sequential`). You can configure non-sequential, out-of-order matching via `ExecutionMatchingMode::Unordered` (OPT-IN):
+
+```php
+use CleatSquad\HttpReplay\Enum\ExecutionMatchingMode;
+
+$engine = new HttpReplayEngine(
+    ExecutionMode::Replay,
+    $cassetteStore,
+    'cassette_name',
+    $requestMatcher,
+    $sanitizer,
+    matchingMode: ExecutionMatchingMode::Unordered,
+);
+```
+
+- **`ExecutionMatchingMode::Sequential` (Default)**: Requests must match cassette exchanges in exact sequential order. Preserves deterministic response order for repeated identical requests.
+- **`ExecutionMatchingMode::Unordered` (OPT-IN)**: Requests can match any available, unconsumed exchange in the cassette. Useful for asynchronous, parallel, or non-deterministic test runners where request dispatch order varies. Once consumed, an exchange cannot be replayed.
+
+> **Performance & Trade-offs**: In `Sequential` mode, matching is $O(1)$ per request. In `Unordered` mode, matching is up to $O(N)$ per request where $N$ is the number of exchanges in the cassette. For large cassettes ($N > 1000$), `Sequential` mode is strongly recommended.
+
 ### Matching
 
 `DefaultRequestMatcher` compares method, URI, headers and body. JSON bodies are
@@ -67,7 +89,7 @@ compared semantically: object key order is ignored, array element order is
 significant, and scalar types are compared strictly, so `1` does not match
 `"1"`. Query parameters are compared as a set.
 
-When nothing matches, `RequestMismatchException` names the failing path, for
+When nothing matches, `RequestMismatchException` (or `UnorderedMismatchException` in unordered mode) names the failing path, for
 instance `body.messages.0.content`, along with the expected and actual values.
 
 ### Diagnostics & CLI Output
