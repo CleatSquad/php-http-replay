@@ -9,10 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- `ExecutionMode::RecordOnce` / `OnMiss`: Replays recorded exchanges when present in cassette, automatically executes real HTTP request, sanitizes and appends to cassette when missing.
+- `ExecutionMode::RecordOnce`: Replays recorded exchanges when present in cassette, automatically executes real HTTP request, sanitizes and appends to cassette when missing.
 - `InMemoryCassetteStore`: Fast RAM-only storage implementation for zero-I/O unit testing.
 - `CassetteNamingStrategyInterface`: Pluggable naming strategies (`StaticCassetteNamingStrategy`, `CallbackCassetteNamingStrategy`), allowing dynamic cassette name resolution.
-- Explicit JSON path sanitization in `DefaultSanitizer`: Support for `sensitiveJsonPaths` (e.g. `$.user.profile.token` or `payment.card.number`) with recursive array and nested object traversal.
+- Explicit JSON path sanitization in `DefaultSanitizer`: Support for `sensitiveJsonPaths` (e.g. `$.user.profile.token` or `payment.card.number`) with recursive array and nested object traversal. The parameter is appended at the end of the constructor signature, so positional calls written against 1.0.0 keep working; it is meant to be passed as a named argument.
 - CLI diagnostic formatting: `toCliString(bool $colorize = false)` on `Difference`, `MatchResult`, and `RequestMismatchException`.
 - Typed sequence exceptions: `SequenceExhaustedException` and `SequenceMismatchException` for granular sequence reporting in CI.
 

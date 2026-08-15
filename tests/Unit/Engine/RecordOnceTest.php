@@ -11,6 +11,7 @@ use CleatSquad\HttpReplay\Enum\ExecutionMode;
 use CleatSquad\HttpReplay\Matcher\DefaultRequestMatcher;
 use CleatSquad\HttpReplay\Model\Cassette;
 use CleatSquad\HttpReplay\Model\Exchange;
+use CleatSquad\HttpReplay\Storage\InMemoryCassetteStore;
 use GuzzleHttp\Psr7\Request;
 use GuzzleHttp\Psr7\Response;
 use PHPUnit\Framework\TestCase;
@@ -113,5 +114,40 @@ final class RecordOnceTest extends TestCase
         $this->expectExceptionMessage('Real HTTP client (PSR-18 ClientInterface) is required for RecordOnce mode when recording a missing exchange.');
 
         $engine->sendRequest(new Request('GET', 'https://api.example.com'));
+    }
+
+    public function testRecordOnceRecordsThenReplaysTheSameRequest(): void
+    {
+        $request = new Request('GET', 'https://api.example.com/data');
+        $response = new Response(200, [], '{"recorded":true}');
+
+        $realClient = $this->createMock(ClientInterface::class);
+        $realClient->expects($this->once())
+            ->method('sendRequest')
+            ->willReturn($response);
+
+        $sanitizer = $this->createMock(SanitizerInterface::class);
+        $sanitizer->method('sanitizeRequest')->willReturn($request);
+        $sanitizer->method('sanitizeResponse')->willReturn($response);
+
+        $store = new InMemoryCassetteStore();
+
+        $engine = new HttpReplayEngine(
+            ExecutionMode::RecordOnce,
+            $store,
+            'round_trip',
+            $this->matcher,
+            $sanitizer,
+            $realClient
+        );
+
+        $this->assertSame($response, $engine->sendRequest($request));
+
+        // Second identical request: replayed from the cassette, no second real call.
+        $this->assertSame($response, $engine->sendRequest($request));
+
+        $cassette = $store->load('round_trip');
+        $this->assertNotNull($cassette);
+        $this->assertCount(1, $cassette->exchanges());
     }
 }

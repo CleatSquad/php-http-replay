@@ -127,16 +127,15 @@ final class HttpReplayEngine implements ClientInterface
     {
         $name = $this->resolveCassetteName();
         $existingCassette = $this->cassetteStore->load($name);
+        $exchanges = $existingCassette !== null ? $existingCassette->exchanges() : [];
 
-        if ($existingCassette !== null && count($existingCassette->exchanges()) > 0) {
-            $exchanges = $existingCassette->exchanges();
-            if (array_key_exists($this->replayIndex, $exchanges)) {
-                $recordedExchange = $exchanges[$this->replayIndex];
-                $matchResult = $this->requestMatcher->match($request, $recordedExchange);
-                if ($matchResult->matched()) {
-                    $this->replayIndex++;
-                    return $recordedExchange->response();
-                }
+        if (array_key_exists($this->replayIndex, $exchanges)) {
+            $recordedExchange = $exchanges[$this->replayIndex];
+            $matchResult = $this->requestMatcher->match($request, $recordedExchange);
+            if ($matchResult->matched()) {
+                $this->replayIndex++;
+
+                return $recordedExchange->response();
             }
         }
 
@@ -145,6 +144,9 @@ final class HttpReplayEngine implements ClientInterface
             throw new \LogicException('Real HTTP client (PSR-18 ClientInterface) is required for RecordOnce mode when recording a missing exchange.');
         }
 
+        // The replay cursor is intentionally left untouched: a recorded exchange is
+        // appended at the end of the cassette and stays replayable for an identical
+        // request issued later by the same engine instance.
         return $this->handleRecord($request);
     }
 }

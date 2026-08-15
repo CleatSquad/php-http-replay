@@ -81,4 +81,44 @@ final class JsonPathSanitizerTest extends TestCase
 
         $this->assertSame('[REDACTED]', $sanitizedData['data']['auth']['refresh_token']);
     }
+
+    public function testJsonPathKeepsKeysStartingWithSpecialCharacters(): void
+    {
+        $sanitizer = new DefaultSanitizer(
+            sensitiveHeaders: [],
+            sensitiveBodyKeys: [],
+            sensitiveQueryParams: [],
+            sensitiveJsonPaths: ['$.$ref.token'],
+            replacement: '[REDACTED]'
+        );
+
+        $body = ['$ref' => ['token' => 'secret_value', 'id' => 7]];
+
+        $request = new Request('POST', 'https://api.example.com', [], (string) json_encode($body));
+
+        /** @var array{'$ref': array{token: string, id: int}} $sanitizedData */
+        $sanitizedData = json_decode((string) $sanitizer->sanitizeRequest($request)->getBody(), true);
+
+        $this->assertSame('[REDACTED]', $sanitizedData['$ref']['token']);
+        $this->assertSame(7, $sanitizedData['$ref']['id']);
+    }
+
+    public function testConstructorRemainsCompatibleWithPositionalArguments(): void
+    {
+        $sanitizer = new DefaultSanitizer(
+            ['authorization'],
+            ['token'],
+            ['api_key'],
+            '[MASKED]'
+        );
+
+        $body = ['token' => 'secret_value'];
+
+        $request = new Request('POST', 'https://api.example.com', [], (string) json_encode($body));
+
+        /** @var array{token: string} $sanitizedData */
+        $sanitizedData = json_decode((string) $sanitizer->sanitizeRequest($request)->getBody(), true);
+
+        $this->assertSame('[MASKED]', $sanitizedData['token']);
+    }
 }

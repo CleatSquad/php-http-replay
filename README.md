@@ -55,7 +55,7 @@ $response = $client->post('https://api.openai.com/v1/chat/completions', [
 
 - `ExecutionMode::Replay` : Performs no network calls and replays recorded responses from the cassette.
 - `ExecutionMode::Record` : Sends real HTTP requests, sanitizes the response, appends the exchange to the cassette, and returns the response.
-- `ExecutionMode::RecordOnce` / `OnMiss` : Replays if a matching exchange exists in the cassette; executes real network call, sanitizes, and appends to cassette if missing.
+- `ExecutionMode::RecordOnce` : Replays if a matching exchange exists in the cassette; executes real network call, sanitizes, and appends to cassette if missing.
 - `ExecutionMode::Passthrough` : Bypasses the replay engine and performs live HTTP calls without modifying cassettes.
 
 ### Matching
@@ -95,8 +95,8 @@ $sanitizer = new DefaultSanitizer(
     sensitiveHeaders: ['authorization', 'x-api-key'],
     sensitiveBodyKeys: ['api_key', 'token', 'secret'],
     sensitiveQueryParams: ['api_key', 'token'],
+    replacement: '[REDACTED]',
     sensitiveJsonPaths: ['$.user.profile.token', 'payment.card.number'],
-    replacement: '[REDACTED]'
 );
 ```
 

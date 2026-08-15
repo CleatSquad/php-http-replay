@@ -50,16 +50,16 @@ final class DefaultSanitizer implements SanitizerInterface
      * @param list<string> $sensitiveHeaders Header names to mask (case-insensitive)
      * @param list<string> $sensitiveBodyKeys JSON object keys to mask recursively
      * @param list<string> $sensitiveQueryParams URI query parameter names to mask (case-insensitive)
-     * @param list<string> $sensitiveJsonPaths Explicit JSON paths/pointers to mask (e.g. "$.user.profile.token")
      * @param string $replacement Masking string replacement
+     * @param list<string> $sensitiveJsonPaths Explicit JSON paths to mask (e.g. "$.user.profile.token")
      */
     public function __construct(
         private readonly array $sensitiveHeaders = self::DEFAULT_SENSITIVE_HEADERS,
         private readonly array $sensitiveBodyKeys = self::DEFAULT_SENSITIVE_BODY_KEYS,
         private readonly array $sensitiveQueryParams = self::DEFAULT_SENSITIVE_QUERY_PARAMS,
-        private readonly array $sensitiveJsonPaths = [],
         private readonly string $replacement = '[REDACTED]',
         private readonly ?StreamFactoryInterface $streamFactory = null,
+        private readonly array $sensitiveJsonPaths = [],
     ) {
     }
 
@@ -187,13 +187,40 @@ final class DefaultSanitizer implements SanitizerInterface
         }
 
         foreach ($this->sensitiveJsonPaths as $rawPath) {
-            $cleanPath = ltrim((string) $rawPath, '$.');
-            $cleanPath = ltrim($cleanPath, '$');
-            $segments = explode('.', $cleanPath);
+            $segments = $this->parseJsonPath((string) $rawPath);
+            if (count($segments) === 0) {
+                continue;
+            }
+
             $data = $this->redactPathSegment($data, $segments);
         }
 
         return $data;
+    }
+
+    /**
+     * Splits "$.user.profile.token" or "payment.card.number" into its key segments.
+     *
+     * Only the leading root marker is stripped, so a key named "$ref" or a path
+     * segment starting with a dot is preserved.
+     *
+     * @return list<string>
+     */
+    private function parseJsonPath(string $rawPath): array
+    {
+        $path = $rawPath;
+        if (str_starts_with($path, '$')) {
+            $path = substr($path, 1);
+        }
+        if (str_starts_with($path, '.')) {
+            $path = substr($path, 1);
+        }
+
+        if ($path === '') {
+            return [];
+        }
+
+        return explode('.', $path);
     }
 
     /**
