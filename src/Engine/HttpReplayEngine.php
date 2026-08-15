@@ -8,13 +8,16 @@ use CleatSquad\HttpReplay\Contract\CassetteNamingStrategyInterface;
 use CleatSquad\HttpReplay\Contract\CassetteStoreInterface;
 use CleatSquad\HttpReplay\Contract\RequestMatcherInterface;
 use CleatSquad\HttpReplay\Contract\SanitizerInterface;
+use CleatSquad\HttpReplay\Enum\ExecutionMatchingMode;
 use CleatSquad\HttpReplay\Enum\ExecutionMode;
 use CleatSquad\HttpReplay\Exception\CassetteNotFoundException;
 use CleatSquad\HttpReplay\Exception\RequestMismatchException;
 use CleatSquad\HttpReplay\Exception\SequenceExhaustedException;
 use CleatSquad\HttpReplay\Exception\SequenceMismatchException;
+use CleatSquad\HttpReplay\Exception\UnorderedMismatchException;
 use CleatSquad\HttpReplay\Model\Cassette;
 use CleatSquad\HttpReplay\Model\Exchange;
+use CleatSquad\HttpReplay\Model\MatchResult;
 use CleatSquad\HttpReplay\Model\ReplayStats;
 use Psr\Http\Client\ClientInterface;
 use Psr\Http\Message\RequestInterface;
@@ -36,6 +39,7 @@ final class HttpReplayEngine implements ClientInterface
         private readonly RequestMatcherInterface $requestMatcher,
         private readonly SanitizerInterface $sanitizer,
         private readonly ?ClientInterface $realClient = null,
+        private readonly ExecutionMatchingMode $matchingMode = ExecutionMatchingMode::Sequential,
     ) {
         if ($this->realClient === null && ($this->mode === ExecutionMode::Record || $this->mode === ExecutionMode::Passthrough)) {
             throw new \LogicException(sprintf('Real HTTP client (PSR-18 ClientInterface) is required for %s mode.', $this->mode->value));
@@ -64,6 +68,7 @@ final class HttpReplayEngine implements ClientInterface
             replayedCount: $replayedCount,
             recordedCount: $this->recordedCount,
             unusedIndices: $unusedIndices,
+            matchingMode: $this->matchingMode,
         );
     }
 
@@ -104,21 +109,82 @@ final class HttpReplayEngine implements ClientInterface
         }
 
         $exchanges = $cassette->exchanges();
-        if (!array_key_exists($this->replayIndex, $exchanges)) {
-            throw SequenceExhaustedException::forCassette($name, $this->replayIndex, count($exchanges));
+
+        if ($this->matchingMode === ExecutionMatchingMode::Sequential) {
+            if (!array_key_exists($this->replayIndex, $exchanges)) {
+                throw SequenceExhaustedException::forCassette($name, $this->replayIndex, count($exchanges));
+            }
+
+            $recordedExchange = $exchanges[$this->replayIndex];
+            $matchResult = $this->requestMatcher->match($request, $recordedExchange);
+
+            if (!$matchResult->matched()) {
+                throw SequenceMismatchException::forSequenceMismatch($name, $this->replayIndex, $matchResult);
+            }
+
+            $this->consumedIndices[$this->replayIndex] = true;
+            $this->replayIndex++;
+
+            return $recordedExchange->response();
         }
 
-        $recordedExchange = $exchanges[$this->replayIndex];
-        $matchResult = $this->requestMatcher->match($request, $recordedExchange);
+        return $this->handleUnorderedReplay($request, $name, $exchanges);
+    }
 
-        if (!$matchResult->matched()) {
-            throw SequenceMismatchException::forSequenceMismatch($name, $this->replayIndex, $matchResult);
+    /**
+     * @param list<Exchange> $exchanges
+     */
+    private function handleUnorderedReplay(RequestInterface $request, string $cassetteName, array $exchanges): ResponseInterface
+    {
+        $totalExchanges = count($exchanges);
+        $consumedCount = count($this->consumedIndices);
+
+        if ($consumedCount >= $totalExchanges) {
+            throw SequenceExhaustedException::forCassette($cassetteName, $totalExchanges, $totalExchanges);
         }
 
-        $this->consumedIndices[$this->replayIndex] = true;
-        $this->replayIndex++;
+        $inspectedCount = 0;
+        $bestCandidateIndex = -1;
+        $bestMatchResult = null;
+        $fewestDiffCount = \PHP_INT_MAX;
 
-        return $recordedExchange->response();
+        foreach ($exchanges as $i => $recordedExchange) {
+            if (isset($this->consumedIndices[$i])) {
+                continue;
+            }
+
+            $inspectedCount++;
+            $matchResult = $this->requestMatcher->match($request, $recordedExchange);
+
+            if ($matchResult->matched()) {
+                $this->consumedIndices[$i] = true;
+                return $recordedExchange->response();
+            }
+
+            $diffCount = count($matchResult->differences());
+            if ($diffCount < $fewestDiffCount) {
+                $fewestDiffCount = $diffCount;
+                $bestCandidateIndex = $i;
+                $bestMatchResult = $matchResult;
+            }
+        }
+
+        if ($bestMatchResult === null) {
+            $bestCandidateIndex = 0;
+            $bestMatchResult = MatchResult::mismatch(['replay' => 'No unconsumed exchange candidate found in cassette.']);
+        }
+
+        throw UnorderedMismatchException::forUnorderedMismatch(
+            cassetteName: $cassetteName,
+            bestCandidateIndex: $bestCandidateIndex,
+            bestMatchResult: $bestMatchResult,
+            inspectedCount: $inspectedCount,
+            consumedCount: $consumedCount,
+            context: [
+                'matchingMode' => $this->matchingMode->value,
+                'totalExchanges' => $totalExchanges,
+            ]
+        );
     }
 
     private function handleRecord(RequestInterface $request): ResponseInterface
@@ -163,14 +229,28 @@ final class HttpReplayEngine implements ClientInterface
         $existingCassette = $this->cassetteStore->load($name);
         $exchanges = $existingCassette !== null ? $existingCassette->exchanges() : [];
 
-        if (array_key_exists($this->replayIndex, $exchanges)) {
-            $recordedExchange = $exchanges[$this->replayIndex];
-            $matchResult = $this->requestMatcher->match($request, $recordedExchange);
-            if ($matchResult->matched()) {
-                $this->consumedIndices[$this->replayIndex] = true;
-                $this->replayIndex++;
+        if ($this->matchingMode === ExecutionMatchingMode::Sequential) {
+            if (array_key_exists($this->replayIndex, $exchanges)) {
+                $recordedExchange = $exchanges[$this->replayIndex];
+                $matchResult = $this->requestMatcher->match($request, $recordedExchange);
+                if ($matchResult->matched()) {
+                    $this->consumedIndices[$this->replayIndex] = true;
+                    $this->replayIndex++;
 
-                return $recordedExchange->response();
+                    return $recordedExchange->response();
+                }
+            }
+        } else {
+            foreach ($exchanges as $i => $recordedExchange) {
+                if (isset($this->consumedIndices[$i])) {
+                    continue;
+                }
+                $matchResult = $this->requestMatcher->match($request, $recordedExchange);
+                if ($matchResult->matched()) {
+                    $this->consumedIndices[$i] = true;
+
+                    return $recordedExchange->response();
+                }
             }
         }
 

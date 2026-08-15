@@ -12,6 +12,7 @@ final readonly class ReplayStats
      * @param int $replayedCount Number of exchanges replayed during the session
      * @param int $recordedCount Number of exchanges newly recorded during the session
      * @param list<int> $unusedIndices List of 0-based exchange indices in the cassette that were never replayed
+     * @param \CleatSquad\HttpReplay\Enum\ExecutionMatchingMode $matchingMode Matching mode used during execution
      */
     public function __construct(
         public string $cassetteName,
@@ -19,6 +20,7 @@ final readonly class ReplayStats
         public int $replayedCount,
         public int $recordedCount,
         public array $unusedIndices,
+        public \CleatSquad\HttpReplay\Enum\ExecutionMatchingMode $matchingMode = \CleatSquad\HttpReplay\Enum\ExecutionMatchingMode::Sequential,
     ) {
     }
 
