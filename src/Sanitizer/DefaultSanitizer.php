@@ -50,12 +50,14 @@ final class DefaultSanitizer implements SanitizerInterface
      * @param list<string> $sensitiveHeaders Header names to mask (case-insensitive)
      * @param list<string> $sensitiveBodyKeys JSON object keys to mask recursively
      * @param list<string> $sensitiveQueryParams URI query parameter names to mask (case-insensitive)
+     * @param list<string> $sensitiveJsonPaths Explicit JSON paths/pointers to mask (e.g. "$.user.profile.token")
      * @param string $replacement Masking string replacement
      */
     public function __construct(
         private readonly array $sensitiveHeaders = self::DEFAULT_SENSITIVE_HEADERS,
         private readonly array $sensitiveBodyKeys = self::DEFAULT_SENSITIVE_BODY_KEYS,
         private readonly array $sensitiveQueryParams = self::DEFAULT_SENSITIVE_QUERY_PARAMS,
+        private readonly array $sensitiveJsonPaths = [],
         private readonly string $replacement = '[REDACTED]',
         private readonly ?StreamFactoryInterface $streamFactory = null,
     ) {
@@ -102,6 +104,7 @@ final class DefaultSanitizer implements SanitizerInterface
         if ($this->isValidJson($bodyStr)) {
             $data = json_decode($bodyStr, true);
             $sanitizedData = $this->sanitizeJsonData($data);
+            $sanitizedData = $this->sanitizeJsonPaths($sanitizedData);
             $newBodyStr = (string) json_encode($sanitizedData);
 
             $sanitized = $sanitized->withBody($this->createStream($newBodyStr, $request->getBody()));
@@ -132,6 +135,7 @@ final class DefaultSanitizer implements SanitizerInterface
         if ($this->isValidJson($bodyStr)) {
             $data = json_decode($bodyStr, true);
             $sanitizedData = $this->sanitizeJsonData($data);
+            $sanitizedData = $this->sanitizeJsonPaths($sanitizedData);
             $newBodyStr = (string) json_encode($sanitizedData);
 
             $sanitized = $sanitized->withBody($this->createStream($newBodyStr, $response->getBody()));
@@ -174,6 +178,55 @@ final class DefaultSanitizer implements SanitizerInterface
         }
 
         return $sanitized;
+    }
+
+    private function sanitizeJsonPaths(mixed $data): mixed
+    {
+        if (!is_array($data) || count($this->sensitiveJsonPaths) === 0) {
+            return $data;
+        }
+
+        foreach ($this->sensitiveJsonPaths as $rawPath) {
+            $cleanPath = ltrim((string) $rawPath, '$.');
+            $cleanPath = ltrim($cleanPath, '$');
+            $segments = explode('.', $cleanPath);
+            $data = $this->redactPathSegment($data, $segments);
+        }
+
+        return $data;
+    }
+
+    /**
+     * @param mixed $data
+     * @param list<string> $segments
+     * @return mixed
+     */
+    private function redactPathSegment(mixed $data, array $segments): mixed
+    {
+        if (!is_array($data) || count($segments) === 0) {
+            return $data;
+        }
+
+        $currentKey = $segments[0];
+        $remainingSegments = array_slice($segments, 1);
+
+        if (array_is_list($data)) {
+            $result = [];
+            foreach ($data as $item) {
+                $result[] = $this->redactPathSegment($item, $segments);
+            }
+            return $result;
+        }
+
+        if (array_key_exists($currentKey, $data)) {
+            if (count($remainingSegments) === 0) {
+                $data[$currentKey] = $this->replacement;
+            } else {
+                $data[$currentKey] = $this->redactPathSegment($data[$currentKey], $remainingSegments);
+            }
+        }
+
+        return $data;
     }
 
     private function sanitizeQueryString(string $query): string

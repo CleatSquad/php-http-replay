@@ -59,4 +59,23 @@ final readonly class Difference
 
         return $this->path === null ? $label : $label . ' at ' . $this->path;
     }
+
+    /** Multi-line CLI rendering with optional ANSI colors. */
+    public function toCliString(bool $colorize = false): string
+    {
+        $label = ucfirst($this->kind->value) . ' mismatch';
+        $location = $this->path !== null ? ' at ' . $this->path : '';
+
+        if ($colorize) {
+            $title = sprintf("\033[1;31m%s%s\033[0m", $label, $location);
+            $exp = sprintf("  expected: \033[32m%s\033[0m", $this->expected);
+            $act = sprintf("  actual:   \033[31m%s\033[0m", $this->actual);
+        } else {
+            $title = sprintf('%s%s', $label, $location);
+            $exp = sprintf('  expected: %s', $this->expected);
+            $act = sprintf('  actual:   %s', $this->actual);
+        }
+
+        return sprintf("%s\n%s\n%s", $title, $exp, $act);
+    }
 }

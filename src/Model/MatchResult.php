@@ -40,4 +40,23 @@ final readonly class MatchResult
     {
         return $this->differences;
     }
+
+    /** Multi-line CLI diagnostic string for differences. */
+    public function toCliString(bool $colorize = false): string
+    {
+        if ($this->matched || count($this->differences) === 0) {
+            return 'Match successful: no differences detected.';
+        }
+
+        $lines = [];
+        foreach ($this->differences as $key => $val) {
+            if ($colorize) {
+                $lines[] = sprintf("  \033[33m%s\033[0m: \033[31m%s\033[0m", $key, $val);
+            } else {
+                $lines[] = sprintf('  %s: %s', $key, $val);
+            }
+        }
+
+        return "Request mismatch:\n" . implode("\n", $lines);
+    }
 }

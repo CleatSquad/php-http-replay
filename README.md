@@ -51,12 +51,12 @@ $response = $client->post('https://api.openai.com/v1/chat/completions', [
 ]);
 ```
 
-Switching `ExecutionMode::Replay` to `ExecutionMode::Record` performs the real
-request and writes the sanitized exchange to the cassette. `ExecutionMode::Passthrough`
-disables the mechanism entirely without touching the calling code.
+### Execution Modes
 
-The handler is instance-local: it applies to the client you gave it to, and
-leaves every other HTTP client in the process alone.
+- `ExecutionMode::Replay` : Performs no network calls and replays recorded responses from the cassette.
+- `ExecutionMode::Record` : Sends real HTTP requests, sanitizes the response, appends the exchange to the cassette, and returns the response.
+- `ExecutionMode::RecordOnce` / `OnMiss` : Replays if a matching exchange exists in the cassette; executes real network call, sanitizes, and appends to cassette if missing.
+- `ExecutionMode::Passthrough` : Bypasses the replay engine and performs live HTTP calls without modifying cassettes.
 
 ### Matching
 
@@ -68,30 +68,52 @@ significant, and scalar types are compared strictly, so `1` does not match
 When nothing matches, `RequestMismatchException` names the failing path, for
 instance `body.messages.0.content`, along with the expected and actual values.
 
-Headers that change on every run are ignored by default: `Authorization`,
-`Cookie`, `User-Agent`, `Date`, `Content-Length` and a few others. The
-constructor takes the complete replacement list, so passing your own set
-replaces the defaults rather than adding to them.
+### Diagnostics & CLI Output
 
-### Sanitization
+`Difference`, `MatchResult`, and `RequestMismatchException` offer multi-line CLI diagnostic output:
 
-`DefaultSanitizer` redacts secrets in headers, recursively in JSON bodies, and
-in URI query parameters such as `?api_key=`, `?token=` and `?secret=`.
+```php
+try {
+    $engine->sendRequest($request);
+} catch (RequestMismatchException $e) {
+    echo $e->toCliString(colorize: true);
+}
+```
 
-Sanitization applies to what is stored, never to what is sent. In `Record`
-mode the remote API receives your real credentials and the cassette receives
-`[REDACTED]` — which is what makes a cassette safe to commit. Review a cassette
-before committing it the first time: a secret this library does not recognize
-is a secret it will not redact.
+Output:
+```text
+Request mismatch in cassette "openai_chat" at index 0:
+  body.messages.0.content: expected "Hello", actual "Bonjour"
+```
 
-### Storage
+### Sanitization & JSON Path Redaction
 
-`JsonCassetteStore` writes UTF-8 JSON atomically, through a temporary file and
-a rename, and stamps each cassette with a schema `version` so a future format
-change stays detectable rather than silently misread. Cassette names are
-reduced to their basename, so a name cannot escape the configured directory.
+`DefaultSanitizer` redacts secrets in headers, URI query parameters, recursively in JSON bodies by key name, and by explicit JSON paths/pointers (e.g., `$.user.profile.token` or `payment.card.number`):
 
-Implement `CassetteStoreInterface` to store cassettes anywhere else.
+```php
+$sanitizer = new DefaultSanitizer(
+    sensitiveHeaders: ['authorization', 'x-api-key'],
+    sensitiveBodyKeys: ['api_key', 'token', 'secret'],
+    sensitiveQueryParams: ['api_key', 'token'],
+    sensitiveJsonPaths: ['$.user.profile.token', 'payment.card.number'],
+    replacement: '[REDACTED]'
+);
+```
+
+### Storage Backends
+
+- `JsonCassetteStore` : Writes UTF-8 JSON atomically through a temporary file and `LOCK_EX` rename, stamped with a schema version.
+- `InMemoryCassetteStore` : RAM-only cassette store for fast, zero-I/O unit tests.
+
+### Cassette Naming Strategies
+
+Use `CassetteNamingStrategyInterface` for dynamic cassette resolution:
+
+```php
+use CleatSquad\HttpReplay\Naming\CallbackCassetteNamingStrategy;
+
+$naming = new CallbackCassetteNamingStrategy(fn () => 'test_' . $testId);
+```
 
 ### Importing php-vcr cassettes
 
@@ -101,9 +123,13 @@ use CleatSquad\HttpReplay\PhpVcr\PhpVcrCassetteImporter;
 $cassette = PhpVcrCassetteImporter::fromYaml(__DIR__ . '/fixtures/legacy.yml');
 ```
 
-Importing preserves the recording as it was, including any credential the
-legacy cassette contained. Sanitization happens when the cassette is written
-back through the store.
+## Optional Community Integrations
+
+`php-http-replay` is fully autonomous and zero-dependency. Community integration packages can be installed separately:
+
+- `cleatsquad/php-http-replay-vcr` (External adapter for legacy PHP-VCR storage)
+- `cleatsquad/php-http-replay-vcr-plugin` (External adapter for HTTPlug pipeline)
+- `cleatsquad/php-http-replay-phpunit` (Tooling package for PHPUnit 11 `#[Cassette]` attributes)
 
 ## Limitations
 
@@ -114,9 +140,6 @@ back through the store.
 - **Streaming and SSE**: transport-level timing and chunk boundaries for
   Server-Sent Events are not reproduced. Stream bodies remain readable in full
   through PSR-7.
-- **PSR-17 factories**: outside a Guzzle environment, pass the PSR-17 factories
-  (`RequestFactoryInterface`, `ResponseFactoryInterface`, `StreamFactoryInterface`)
-  to `JsonCassetteStore` so it can build messages with your own implementations.
 
 ## Public API
 

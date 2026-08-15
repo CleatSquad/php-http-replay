@@ -7,9 +7,9 @@ namespace CleatSquad\HttpReplay\Exception;
 use CleatSquad\HttpReplay\Model\MatchResult;
 use RuntimeException;
 
-final class RequestMismatchException extends RuntimeException implements HttpReplayException
+class RequestMismatchException extends RuntimeException implements HttpReplayException
 {
-    private function __construct(
+    protected function __construct(
         string $message,
         private readonly string $cassetteName,
         private readonly int $index,
@@ -50,5 +50,15 @@ final class RequestMismatchException extends RuntimeException implements HttpRep
     public function matchResult(): MatchResult
     {
         return $this->matchResult;
+    }
+
+    public function toCliString(bool $colorize = false): string
+    {
+        $header = sprintf('Request mismatch in cassette "%s" at index %d:', $this->cassetteName, $this->index);
+        if ($colorize) {
+            $header = sprintf("\033[1;31m%s\033[0m", $header);
+        }
+
+        return $header . "\n" . $this->matchResult->toCliString($colorize);
     }
 }
