@@ -9,4 +9,5 @@ enum ExecutionMode: string
     case Replay = 'replay';
     case Record = 'record';
     case Passthrough = 'passthrough';
+    case RecordOnce = 'record_once';
 }
