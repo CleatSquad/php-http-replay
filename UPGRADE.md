@@ -102,3 +102,27 @@ The checksum is stored unsigned inside the file it covers, so it detects corrupt
 #### 2. Non-Seekable PSR-7 Stream Support
 
 `DefaultSanitizer` now returns a sanitized message carrying a fresh seekable stream when the incoming body is not seekable, so downstream consumers can still read it. Previously such a body was already consumed and read back as an empty string.
+
+---
+
+## Upgrading from v1.2.0 to v1.3.0
+
+`v1.3.0` is **100% backward-compatible** with `v1.2.0`. No code changes are required for existing integrations.
+
+### Key Additions & New Capabilities
+
+#### 1. Cassette Consumption Audit (`ReplayStats`)
+
+`HttpReplayEngine::stats()` returns a `ReplayStats` snapshot of what the engine did during the session, so a test tear-down can fail on a cassette that drifted out of sync with the code it covers:
+
+```php
+$stats = $engine->stats();
+
+$this->assertFalse($stats->hasUnusedExchanges(), sprintf(
+    'Cassette "%s" holds unused exchanges at indices: %s',
+    $stats->cassetteName,
+    implode(', ', $stats->unusedIndices)
+));
+```
+
+`unusedIndices` covers only exchanges that were already in the cassette and were never replayed; exchanges recorded during the session by `Record` or `RecordOnce` are not reported as unused. Reading the stats loads the cassette from the store, so call it once per assertion rather than in a loop.

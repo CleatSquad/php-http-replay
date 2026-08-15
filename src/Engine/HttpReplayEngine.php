@@ -15,6 +15,7 @@ use CleatSquad\HttpReplay\Exception\SequenceExhaustedException;
 use CleatSquad\HttpReplay\Exception\SequenceMismatchException;
 use CleatSquad\HttpReplay\Model\Cassette;
 use CleatSquad\HttpReplay\Model\Exchange;
+use CleatSquad\HttpReplay\Model\ReplayStats;
 use Psr\Http\Client\ClientInterface;
 use Psr\Http\Message\RequestInterface;
 use Psr\Http\Message\ResponseInterface;
@@ -22,6 +23,11 @@ use Psr\Http\Message\ResponseInterface;
 final class HttpReplayEngine implements ClientInterface
 {
     private int $replayIndex = 0;
+    private int $recordedCount = 0;
+    /** @var array<int, bool> Cassette indices replayed during this session */
+    private array $consumedIndices = [];
+    /** @var array<int, bool> Cassette indices written during this session */
+    private array $recordedIndices = [];
 
     public function __construct(
         private readonly ExecutionMode $mode,
@@ -34,6 +40,31 @@ final class HttpReplayEngine implements ClientInterface
         if ($this->realClient === null && ($this->mode === ExecutionMode::Record || $this->mode === ExecutionMode::Passthrough)) {
             throw new \LogicException(sprintf('Real HTTP client (PSR-18 ClientInterface) is required for %s mode.', $this->mode->value));
         }
+    }
+
+    public function stats(): ReplayStats
+    {
+        $name = $this->resolveCassetteName();
+        $cassette = $this->cassetteStore->load($name);
+        $totalExchanges = $cassette !== null ? count($cassette->exchanges()) : 0;
+        $replayedCount = count($this->consumedIndices);
+
+        // An exchange written during this session was never stale to begin with, so
+        // only exchanges the cassette already held and that went unused are reported.
+        $unusedIndices = [];
+        for ($i = 0; $i < $totalExchanges; $i++) {
+            if (!isset($this->consumedIndices[$i]) && !isset($this->recordedIndices[$i])) {
+                $unusedIndices[] = $i;
+            }
+        }
+
+        return new ReplayStats(
+            cassetteName: $name,
+            totalExchanges: $totalExchanges,
+            replayedCount: $replayedCount,
+            recordedCount: $this->recordedCount,
+            unusedIndices: $unusedIndices,
+        );
     }
 
     public function sendRequest(RequestInterface $request): ResponseInterface
@@ -84,6 +115,7 @@ final class HttpReplayEngine implements ClientInterface
             throw SequenceMismatchException::forSequenceMismatch($name, $this->replayIndex, $matchResult);
         }
 
+        $this->consumedIndices[$this->replayIndex] = true;
         $this->replayIndex++;
 
         return $recordedExchange->response();
@@ -118,6 +150,8 @@ final class HttpReplayEngine implements ClientInterface
 
         // 5. Save cassette atomically
         $this->cassetteStore->save($name, $newCassette);
+        $this->recordedIndices[count($existingExchanges)] = true;
+        $this->recordedCount++;
 
         // 6. Return ORIGINAL unsanitized response
         return $response;
@@ -133,6 +167,7 @@ final class HttpReplayEngine implements ClientInterface
             $recordedExchange = $exchanges[$this->replayIndex];
             $matchResult = $this->requestMatcher->match($request, $recordedExchange);
             if ($matchResult->matched()) {
+                $this->consumedIndices[$this->replayIndex] = true;
                 $this->replayIndex++;
 
                 return $recordedExchange->response();

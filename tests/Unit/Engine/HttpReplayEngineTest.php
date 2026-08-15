@@ -13,6 +13,7 @@ use CleatSquad\HttpReplay\Exception\RequestMismatchException;
 use CleatSquad\HttpReplay\Matcher\DefaultRequestMatcher;
 use CleatSquad\HttpReplay\Model\Cassette;
 use CleatSquad\HttpReplay\Model\Exchange;
+use CleatSquad\HttpReplay\Storage\InMemoryCassetteStore;
 use GuzzleHttp\Psr7\Request;
 use GuzzleHttp\Psr7\Response;
 use PHPUnit\Framework\Attributes\CoversClass;
@@ -249,5 +250,87 @@ final class HttpReplayEngineTest extends TestCase
             $this->createMock(SanitizerInterface::class),
             null
         );
+    }
+
+    public function testEngineStatsInReplayMode(): void
+    {
+        $req1 = new Request('GET', 'https://api.example.com/1');
+        $res1 = new Response(200, [], 'res1');
+
+        $req2 = new Request('POST', 'https://api.example.com/2');
+        $res2 = new Response(201, [], 'res2');
+
+        $cassette = new Cassette(1, [
+            new Exchange($req1, $res1),
+            new Exchange($req2, $res2),
+        ]);
+
+        $store = $this->createMock(CassetteStoreInterface::class);
+        $store->expects($this->atLeastOnce())
+            ->method('load')
+            ->with('my_cassette')
+            ->willReturn($cassette);
+
+        $engine = new HttpReplayEngine(
+            ExecutionMode::Replay,
+            $store,
+            'my_cassette',
+            $this->matcher,
+            $this->createMock(SanitizerInterface::class)
+        );
+
+        $statsInitial = $engine->stats();
+        $this->assertSame('my_cassette', $statsInitial->cassetteName);
+        $this->assertSame(2, $statsInitial->totalExchanges);
+        $this->assertSame(0, $statsInitial->replayedCount);
+        $this->assertSame(0, $statsInitial->recordedCount);
+        $this->assertSame([0, 1], $statsInitial->unusedIndices);
+        $this->assertTrue($statsInitial->hasUnusedExchanges());
+        $this->assertFalse($statsInitial->isFullyConsumed());
+
+        // Replay index #0
+        $engine->sendRequest(new Request('GET', 'https://api.example.com/1'));
+
+        $statsAfterOne = $engine->stats();
+        $this->assertSame(1, $statsAfterOne->replayedCount);
+        $this->assertSame([1], $statsAfterOne->unusedIndices);
+        $this->assertFalse($statsAfterOne->isFullyConsumed());
+
+        // Replay index #1
+        $engine->sendRequest(new Request('POST', 'https://api.example.com/2'));
+
+        $statsFinal = $engine->stats();
+        $this->assertSame(2, $statsFinal->replayedCount);
+        $this->assertSame([], $statsFinal->unusedIndices);
+        $this->assertTrue($statsFinal->isFullyConsumed());
+    }
+
+    public function testEngineStatsDoesNotReportFreshlyRecordedExchangesAsUnused(): void
+    {
+        $realClient = $this->createMock(ClientInterface::class);
+        $realClient->method('sendRequest')->willReturn(new Response(200, [], 'recorded'));
+
+        $sanitizer = $this->createMock(SanitizerInterface::class);
+        $sanitizer->method('sanitizeRequest')->willReturnArgument(0);
+        $sanitizer->method('sanitizeResponse')->willReturnArgument(0);
+
+        $engine = new HttpReplayEngine(
+            ExecutionMode::Record,
+            new InMemoryCassetteStore(),
+            'recording_cassette',
+            $this->matcher,
+            $sanitizer,
+            $realClient
+        );
+
+        $engine->sendRequest(new Request('GET', 'https://api.example.com/1'));
+        $engine->sendRequest(new Request('GET', 'https://api.example.com/2'));
+
+        $stats = $engine->stats();
+        $this->assertSame(2, $stats->totalExchanges);
+        $this->assertSame(2, $stats->recordedCount);
+        $this->assertSame(0, $stats->replayedCount);
+        $this->assertSame([], $stats->unusedIndices);
+        $this->assertFalse($stats->hasUnusedExchanges());
     }
 }
