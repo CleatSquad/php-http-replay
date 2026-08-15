@@ -250,4 +250,57 @@ final class HttpReplayEngineTest extends TestCase
             null
         );
     }
+
+    public function testEngineStatsInReplayAndRecordModes(): void
+    {
+        $req1 = new Request('GET', 'https://api.example.com/1');
+        $res1 = new Response(200, [], 'res1');
+
+        $req2 = new Request('POST', 'https://api.example.com/2');
+        $res2 = new Response(201, [], 'res2');
+
+        $cassette = new Cassette(1, [
+            new Exchange($req1, $res1),
+            new Exchange($req2, $res2),
+        ]);
+
+        $store = $this->createMock(CassetteStoreInterface::class);
+        $store->expects($this->atLeastOnce())
+            ->method('load')
+            ->with('my_cassette')
+            ->willReturn($cassette);
+
+        $engine = new HttpReplayEngine(
+            ExecutionMode::Replay,
+            $store,
+            'my_cassette',
+            $this->matcher,
+            $this->createMock(SanitizerInterface::class)
+        );
+
+        $statsInitial = $engine->stats();
+        $this->assertSame('my_cassette', $statsInitial->cassetteName);
+        $this->assertSame(2, $statsInitial->totalExchanges);
+        $this->assertSame(0, $statsInitial->replayedCount);
+        $this->assertSame(0, $statsInitial->recordedCount);
+        $this->assertSame([0, 1], $statsInitial->unusedIndices);
+        $this->assertTrue($statsInitial->hasUnusedExchanges());
+        $this->assertFalse($statsInitial->isFullyConsumed());
+
+        // Replay index #0
+        $engine->sendRequest(new Request('GET', 'https://api.example.com/1'));
+
+        $statsAfterOne = $engine->stats();
+        $this->assertSame(1, $statsAfterOne->replayedCount);
+        $this->assertSame([1], $statsAfterOne->unusedIndices);
+        $this->assertFalse($statsAfterOne->isFullyConsumed());
+
+        // Replay index #1
+        $engine->sendRequest(new Request('POST', 'https://api.example.com/2'));
+
+        $statsFinal = $engine->stats();
+        $this->assertSame(2, $statsFinal->replayedCount);
+        $this->assertSame([], $statsFinal->unusedIndices);
+        $this->assertTrue($statsFinal->isFullyConsumed());
+    }
 }

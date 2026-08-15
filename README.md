@@ -107,6 +107,23 @@ $sanitizer = new DefaultSanitizer(
 - `JsonCassetteStore` : Writes UTF-8 JSON atomically through a temporary file and `LOCK_EX` rename, stamped with a schema version and automatic SHA-256 integrity checksum (`sha256:<hash>`).
 - `InMemoryCassetteStore` : RAM-only cassette store for fast, zero-I/O unit tests.
 
+### Replay Audit Trail & Inspection
+
+`HttpReplayEngine::stats()` returns a `ReplayStats` snapshot to inspect cassette consumption:
+
+```php
+$stats = $engine->stats();
+echo "Replayed: {$stats->replayedCount}/{$stats->totalExchanges}\n";
+
+if ($stats->hasUnusedExchanges()) {
+    echo "Unused exchange indices: " . implode(', ', $stats->unusedIndices);
+}
+
+if ($stats->isFullyConsumed()) {
+    echo "All cassette exchanges were executed successfully.";
+}
+```
+
 ### Cassette Naming Strategies
 
 Use `CassetteNamingStrategyInterface` for dynamic cassette resolution:
