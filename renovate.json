@@ -7,6 +7,7 @@
     "composer",
     "github-actions"
   ],
+  "constraintsFiltering": "strict",
   "packageRules": [
     {
       "description": "Group development tooling updates",
