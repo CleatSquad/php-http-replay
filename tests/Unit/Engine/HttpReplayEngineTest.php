@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace CleatSquad\HttpReplay\Tests\Unit\Engine;
 
 use CleatSquad\HttpReplay\Contract\CassetteStoreInterface;
+use CleatSquad\HttpReplay\Contract\OptionsAwareClientInterface;
 use CleatSquad\HttpReplay\Contract\SanitizerInterface;
 use CleatSquad\HttpReplay\Engine\HttpReplayEngine;
 use CleatSquad\HttpReplay\Enum\ExecutionMode;
@@ -57,6 +58,68 @@ final class HttpReplayEngineTest extends TestCase
 
         $request = new Request('GET', 'https://api.example.com');
         $response = $engine->sendRequest($request);
+
+        $this->assertSame($realResponse, $response);
+    }
+
+    public function testPassthroughModeForwardsOptionsToAnOptionsAwareRealClient(): void
+    {
+        $realResponse = new Response(200, [], 'real output');
+        $realClient = new class($realResponse) implements OptionsAwareClientInterface {
+            /** @var array<string, mixed>|null */
+            public ?array $receivedOptions = null;
+
+            public function __construct(private ResponseInterface $responseToReturn)
+            {
+            }
+
+            public function sendRequest(RequestInterface $request): ResponseInterface
+            {
+                throw new \LogicException('Options-aware call was expected, plain sendRequest should not run.');
+            }
+
+            public function sendRequestWithOptions(RequestInterface $request, array $options): ResponseInterface
+            {
+                $this->receivedOptions = $options;
+
+                return $this->responseToReturn;
+            }
+        };
+
+        $engine = new HttpReplayEngine(
+            ExecutionMode::Passthrough,
+            $this->createMock(CassetteStoreInterface::class),
+            'test_cassette',
+            $this->matcher,
+            $this->createMock(SanitizerInterface::class),
+            $realClient
+        );
+
+        $request = new Request('GET', 'https://api.example.com');
+        $response = $engine->sendRequest($request, ['timeout' => 20.0]);
+
+        $this->assertSame($realResponse, $response);
+        $this->assertSame(['timeout' => 20.0], $realClient->receivedOptions);
+    }
+
+    public function testPassthroughModeWithoutOptionsUsesPlainSendRequest(): void
+    {
+        $realResponse = new Response(200, [], 'real output');
+        $realClient = $this->createMock(ClientInterface::class);
+        $realClient->expects($this->once())
+            ->method('sendRequest')
+            ->willReturn($realResponse);
+
+        $engine = new HttpReplayEngine(
+            ExecutionMode::Passthrough,
+            $this->createMock(CassetteStoreInterface::class),
+            'test_cassette',
+            $this->matcher,
+            $this->createMock(SanitizerInterface::class),
+            $realClient
+        );
+
+        $response = $engine->sendRequest(new Request('GET', 'https://api.example.com'));
 
         $this->assertSame($realResponse, $response);
     }

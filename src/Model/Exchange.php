@@ -12,6 +12,7 @@ final readonly class Exchange
     public function __construct(
         private RequestInterface $request,
         private ResponseInterface $response,
+        private ?int $recordedAt = null,
     ) {
     }
 
@@ -23,5 +24,19 @@ final readonly class Exchange
     public function response(): ResponseInterface
     {
         return $this->response;
+    }
+
+    public function recordedAt(): ?int
+    {
+        return $this->recordedAt;
+    }
+
+    public function isExpired(int $ttlSeconds, ?int $now = null): bool
+    {
+        if ($this->recordedAt === null || $ttlSeconds <= 0) {
+            return false;
+        }
+
+        return (($now ?? time()) - $this->recordedAt) > $ttlSeconds;
     }
 }

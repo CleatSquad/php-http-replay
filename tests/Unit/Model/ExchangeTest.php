@@ -22,5 +22,21 @@ final class ExchangeTest extends TestCase
 
         $this->assertSame($request, $exchange->request());
         $this->assertSame($response, $exchange->response());
+        $this->assertNull($exchange->recordedAt());
+        $this->assertFalse($exchange->isExpired(3600));
+    }
+
+    public function testExchangeWithRecordedAt(): void
+    {
+        $request = $this->createMock(RequestInterface::class);
+        $response = $this->createMock(ResponseInterface::class);
+        $now = 1700000000;
+
+        $exchange = new Exchange($request, $response, $now);
+
+        $this->assertSame($now, $exchange->recordedAt());
+        $this->assertFalse($exchange->isExpired(3600, now: $now + 1800));
+        $this->assertTrue($exchange->isExpired(3600, now: $now + 3601));
+        $this->assertFalse($exchange->isExpired(0, now: $now + 3601), 'TTL <= 0 means no expiration');
     }
 }

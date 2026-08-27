@@ -11,3 +11,11 @@ parameters:
             identifier: return.type
             path: src/Integration/Guzzle/GuzzleReplayHandler.php
             count: 2
+        # guzzlehttp/guzzle types ClientInterface::send()'s $options as a closed
+        # request-options array shape (base_uri, allow_redirects, auth, ...), which
+        # a generic array<string, mixed> options bag can never satisfy statically —
+        # the values are only known at the call site, forwarded as-is.
+        -
+            identifier: argument.type
+            path: src/Integration/Guzzle/GuzzleOptionsAwareClient.php
+            count: 1
