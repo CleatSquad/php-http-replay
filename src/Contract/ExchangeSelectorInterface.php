@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace CleatSquad\HttpReplay\Contract;
 
-use CleatSquad\HttpReplay\Model\ExchangeSelectionResult;
 use CleatSquad\HttpReplay\Model\Exchange;
+use CleatSquad\HttpReplay\Model\ExchangeSelectionResult;
 use Psr\Http\Message\RequestInterface;
 
 interface ExchangeSelectorInterface

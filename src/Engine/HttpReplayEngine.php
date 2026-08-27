@@ -7,18 +7,17 @@ namespace CleatSquad\HttpReplay\Engine;
 use CleatSquad\HttpReplay\Contract\CassetteNamingStrategyInterface;
 use CleatSquad\HttpReplay\Contract\CassetteStoreInterface;
 use CleatSquad\HttpReplay\Contract\ExchangeSelectorInterface;
+use CleatSquad\HttpReplay\Contract\OptionsAwareClientInterface;
 use CleatSquad\HttpReplay\Contract\RequestMatcherInterface;
 use CleatSquad\HttpReplay\Contract\SanitizerInterface;
 use CleatSquad\HttpReplay\Enum\ExecutionMatchingMode;
 use CleatSquad\HttpReplay\Enum\ExecutionMode;
 use CleatSquad\HttpReplay\Exception\CassetteNotFoundException;
-use CleatSquad\HttpReplay\Exception\RequestMismatchException;
 use CleatSquad\HttpReplay\Exception\SequenceExhaustedException;
 use CleatSquad\HttpReplay\Exception\SequenceMismatchException;
 use CleatSquad\HttpReplay\Exception\UnorderedMismatchException;
 use CleatSquad\HttpReplay\Model\Cassette;
 use CleatSquad\HttpReplay\Model\Exchange;
-use CleatSquad\HttpReplay\Model\MatchResult;
 use CleatSquad\HttpReplay\Model\ReplayStats;
 use CleatSquad\HttpReplay\Selector\SequentialExchangeSelector;
 use CleatSquad\HttpReplay\Selector\UnorderedExchangeSelector;
@@ -44,14 +43,15 @@ final class HttpReplayEngine implements ClientInterface
         private readonly ?ClientInterface $realClient = null,
         private readonly ExecutionMatchingMode $matchingMode = ExecutionMatchingMode::Sequential,
         ?ExchangeSelectorInterface $selector = null,
+        private readonly ?int $exchangeTtl = null,
     ) {
         if ($this->realClient === null && ($this->mode === ExecutionMode::Record || $this->mode === ExecutionMode::Passthrough)) {
             throw new \LogicException(sprintf('Real HTTP client (PSR-18 ClientInterface) is required for %s mode.', $this->mode->value));
         }
 
         $this->selector = $selector ?? match ($this->matchingMode) {
-            ExecutionMatchingMode::Sequential => new SequentialExchangeSelector(),
-            ExecutionMatchingMode::Unordered => new UnorderedExchangeSelector(),
+            ExecutionMatchingMode::Sequential => new SequentialExchangeSelector($this->exchangeTtl),
+            ExecutionMatchingMode::Unordered => new UnorderedExchangeSelector($this->exchangeTtl),
         };
     }
 
@@ -81,14 +81,31 @@ final class HttpReplayEngine implements ClientInterface
         );
     }
 
-    public function sendRequest(RequestInterface $request): ResponseInterface
+    /**
+     * @param array<string, mixed> $options Forwarded to the real client only
+     *   when it implements OptionsAwareClientInterface — a plain PSR-18
+     *   client has no slot for these and is called as before.
+     */
+    public function sendRequest(RequestInterface $request, array $options = []): ResponseInterface
     {
         return match ($this->mode) {
-            ExecutionMode::Passthrough => $this->handlePassthrough($request),
+            ExecutionMode::Passthrough => $this->handlePassthrough($request, $options),
             ExecutionMode::Replay => $this->handleReplay($request),
-            ExecutionMode::Record => $this->handleRecord($request),
-            ExecutionMode::RecordOnce => $this->handleRecordOnce($request),
+            ExecutionMode::Record => $this->handleRecord($request, $options),
+            ExecutionMode::RecordOnce => $this->handleRecordOnce($request, $options),
         };
+    }
+
+    /**
+     * @param array<string, mixed> $options
+     */
+    private function sendToRealClient(ClientInterface $client, RequestInterface $request, array $options): ResponseInterface
+    {
+        if ($options !== [] && $client instanceof OptionsAwareClientInterface) {
+            return $client->sendRequestWithOptions($request, $options);
+        }
+
+        return $client->sendRequest($request);
     }
 
     private function resolveCassetteName(): string
@@ -100,13 +117,16 @@ final class HttpReplayEngine implements ClientInterface
         return $this->cassetteName->name();
     }
 
-    private function handlePassthrough(RequestInterface $request): ResponseInterface
+    /**
+     * @param array<string, mixed> $options
+     */
+    private function handlePassthrough(RequestInterface $request, array $options = []): ResponseInterface
     {
         if ($this->realClient === null) {
             throw new \LogicException('Real HTTP client (PSR-18 ClientInterface) is required for Passthrough mode.');
         }
 
-        return $this->realClient->sendRequest($request);
+        return $this->sendToRealClient($this->realClient, $request, $options);
     }
 
     private function handleReplay(RequestInterface $request): ResponseInterface
@@ -147,7 +167,10 @@ final class HttpReplayEngine implements ClientInterface
         );
     }
 
-    private function handleRecord(RequestInterface $request): ResponseInterface
+    /**
+     * @param array<string, mixed> $options
+     */
+    private function handleRecord(RequestInterface $request, array $options = []): ResponseInterface
     {
         if ($this->realClient === null) {
             throw new \LogicException('Real HTTP client (PSR-18 ClientInterface) is required for Record mode.');
@@ -155,7 +178,7 @@ final class HttpReplayEngine implements ClientInterface
 
         $name = $this->resolveCassetteName();
 
-        $response = $this->realClient->sendRequest($request);
+        $response = $this->sendToRealClient($this->realClient, $request, $options);
 
         $sanitizedRequest = $this->sanitizer->sanitizeRequest($request);
         $sanitizedResponse = $this->sanitizer->sanitizeResponse($response);
@@ -165,7 +188,7 @@ final class HttpReplayEngine implements ClientInterface
         $version = $existingCassette !== null ? $existingCassette->version() : 1;
         $metadata = $existingCassette !== null ? $existingCassette->metadata() : [];
 
-        $newExchange = new Exchange($sanitizedRequest, $sanitizedResponse);
+        $newExchange = new Exchange($sanitizedRequest, $sanitizedResponse, time());
         $updatedExchanges = [...$existingExchanges, $newExchange];
 
         $newCassette = new Cassette($version, $updatedExchanges, $metadata);
@@ -177,7 +200,10 @@ final class HttpReplayEngine implements ClientInterface
         return $response;
     }
 
-    private function handleRecordOnce(RequestInterface $request): ResponseInterface
+    /**
+     * @param array<string, mixed> $options
+     */
+    private function handleRecordOnce(RequestInterface $request, array $options = []): ResponseInterface
     {
         $name = $this->resolveCassetteName();
         $existingCassette = $this->cassetteStore->load($name);
@@ -199,6 +225,6 @@ final class HttpReplayEngine implements ClientInterface
         // No index is consumed here: the recorded exchange is appended at the end of
         // the cassette and stays replayable for an identical request issued later by
         // the same engine instance.
-        return $this->handleRecord($request);
+        return $this->handleRecord($request, $options);
     }
 }

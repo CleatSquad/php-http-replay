@@ -8,6 +8,7 @@ use CleatSquad\HttpReplay\Contract\CassetteStoreInterface;
 use CleatSquad\HttpReplay\Engine\HttpReplayEngine;
 use CleatSquad\HttpReplay\Enum\ExecutionMode;
 use CleatSquad\HttpReplay\Exception\RequestMismatchException;
+use CleatSquad\HttpReplay\Integration\Guzzle\GuzzleOptionsAwareClient;
 use CleatSquad\HttpReplay\Integration\Guzzle\GuzzleReplayHandler;
 use CleatSquad\HttpReplay\Matcher\DefaultRequestMatcher;
 use CleatSquad\HttpReplay\Model\Cassette;
@@ -107,6 +108,158 @@ final class GuzzleReplayHandlerTest extends TestCase
         $reqJson = self::decodeJsonObject((string) $ex->request()->getBody());
         $this->assertSame('[REDACTED]', $reqJson['secret']);
         $this->assertSame('[REDACTED]', $ex->response()->getHeaderLine('Set-Cookie'));
+    }
+
+    public function testGuzzleRecordModeForwardsPerRequestTimeoutToTheRealClient(): void
+    {
+        $realRes = new Response(200, [], '{"result":"ok"}');
+        $fakeGuzzleClient = new class($realRes) implements \GuzzleHttp\ClientInterface {
+            /** @var array<string, mixed>|null */
+            public ?array $receivedOptions = null;
+
+            public function __construct(private ResponseInterface $responseToReturn)
+            {
+            }
+
+            /**
+             * @param array<string, mixed> $options
+             */
+            public function send(RequestInterface $request, array $options = []): ResponseInterface
+            {
+                $this->receivedOptions = $options;
+
+                return $this->responseToReturn;
+            }
+
+            /**
+             * @param array<string, mixed> $options
+             * @return \GuzzleHttp\Promise\PromiseInterface<ResponseInterface, mixed>
+             */
+            public function sendAsync(RequestInterface $request, array $options = []): \GuzzleHttp\Promise\PromiseInterface
+            {
+                /** @var \GuzzleHttp\Promise\PromiseInterface<ResponseInterface, mixed> */
+                return \GuzzleHttp\Promise\Create::promiseFor($this->send($request, $options));
+            }
+
+            /**
+             * @param array<string, mixed> $options
+             */
+            public function request(string $method, $uri = '', array $options = []): ResponseInterface
+            {
+                throw new \LogicException('Not used by this test.');
+            }
+
+            /**
+             * @param array<string, mixed> $options
+             * @return \GuzzleHttp\Promise\PromiseInterface<ResponseInterface, mixed>
+             */
+            public function requestAsync(string $method, $uri = '', array $options = []): \GuzzleHttp\Promise\PromiseInterface
+            {
+                throw new \LogicException('Not used by this test.');
+            }
+
+            public function getConfig(?string $option = null): mixed
+            {
+                throw new \LogicException('Not used by this test.');
+            }
+        };
+
+        $store = $this->createMock(CassetteStoreInterface::class);
+        $store->expects($this->once())->method('load')->willReturn(null);
+        $store->expects($this->once())->method('save');
+
+        $engine = new HttpReplayEngine(
+            ExecutionMode::Record,
+            $store,
+            'guzzle_timeout',
+            new DefaultRequestMatcher(),
+            new DefaultSanitizer(),
+            new GuzzleOptionsAwareClient($fakeGuzzleClient)
+        );
+
+        $handler = new GuzzleReplayHandler($engine);
+        $client = new Client(['handler' => HandlerStack::create($handler)]);
+
+        $client->post('https://api.example.com/v1/data', ['timeout' => 20.0]);
+
+        $this->assertSame(20.0, $fakeGuzzleClient->receivedOptions['timeout'] ?? null);
+    }
+
+    public function testGuzzleRecordModeNeverForwardsTheStreamOption(): void
+    {
+        $realRes = new Response(200, [], '{"result":"ok"}');
+        $fakeGuzzleClient = new class($realRes) implements \GuzzleHttp\ClientInterface {
+            /** @var array<string, mixed>|null */
+            public ?array $receivedOptions = null;
+
+            public function __construct(private ResponseInterface $responseToReturn)
+            {
+            }
+
+            /**
+             * @param array<string, mixed> $options
+             */
+            public function send(RequestInterface $request, array $options = []): ResponseInterface
+            {
+                $this->receivedOptions = $options;
+
+                return $this->responseToReturn;
+            }
+
+            /**
+             * @param array<string, mixed> $options
+             * @return \GuzzleHttp\Promise\PromiseInterface<ResponseInterface, mixed>
+             */
+            public function sendAsync(RequestInterface $request, array $options = []): \GuzzleHttp\Promise\PromiseInterface
+            {
+                /** @var \GuzzleHttp\Promise\PromiseInterface<ResponseInterface, mixed> */
+                return \GuzzleHttp\Promise\Create::promiseFor($this->send($request, $options));
+            }
+
+            /**
+             * @param array<string, mixed> $options
+             */
+            public function request(string $method, $uri = '', array $options = []): ResponseInterface
+            {
+                throw new \LogicException('Not used by this test.');
+            }
+
+            /**
+             * @param array<string, mixed> $options
+             * @return \GuzzleHttp\Promise\PromiseInterface<ResponseInterface, mixed>
+             */
+            public function requestAsync(string $method, $uri = '', array $options = []): \GuzzleHttp\Promise\PromiseInterface
+            {
+                throw new \LogicException('Not used by this test.');
+            }
+
+            public function getConfig(?string $option = null): mixed
+            {
+                throw new \LogicException('Not used by this test.');
+            }
+        };
+
+        $store = $this->createMock(CassetteStoreInterface::class);
+        $store->expects($this->once())->method('load')->willReturn(null);
+        $store->expects($this->once())->method('save');
+
+        $engine = new HttpReplayEngine(
+            ExecutionMode::Record,
+            $store,
+            'guzzle_stream',
+            new DefaultRequestMatcher(),
+            new DefaultSanitizer(),
+            new GuzzleOptionsAwareClient($fakeGuzzleClient)
+        );
+
+        $handler = new GuzzleReplayHandler($engine);
+        $client = new Client(['handler' => HandlerStack::create($handler)]);
+
+        $client->post('https://api.example.com/v1/data', ['timeout' => 20.0, 'stream' => true, 'read_timeout' => 20.0]);
+
+        $this->assertArrayNotHasKey('stream', $fakeGuzzleClient->receivedOptions ?? []);
+        $this->assertArrayNotHasKey('read_timeout', $fakeGuzzleClient->receivedOptions ?? []);
+        $this->assertSame(20.0, $fakeGuzzleClient->receivedOptions['timeout'] ?? null);
     }
 
     public function testGuzzleMismatchThrowsException(): void

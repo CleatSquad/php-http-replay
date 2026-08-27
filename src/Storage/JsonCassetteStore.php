@@ -221,7 +221,11 @@ final readonly class JsonCassetteStore implements CassetteStoreInterface
             $response = new Response($status, $cleanResHeaders, $resBody);
         }
 
-        return new Exchange($request, $response);
+        $recordedAt = isset($data['recorded_at']) && is_numeric($data['recorded_at'])
+            ? (int) $data['recorded_at']
+            : null;
+
+        return new Exchange($request, $response, $recordedAt);
     }
 
     /**
@@ -242,7 +246,7 @@ final readonly class JsonCassetteStore implements CassetteStoreInterface
             $res->getBody()->rewind();
         }
 
-        return [
+        $data = [
             'request' => [
                 'method' => $req->getMethod(),
                 'uri' => (string) $req->getUri(),
@@ -255,5 +259,11 @@ final readonly class JsonCassetteStore implements CassetteStoreInterface
                 'body' => $resBodyStr,
             ],
         ];
+
+        if ($exchange->recordedAt() !== null) {
+            $data['recorded_at'] = $exchange->recordedAt();
+        }
+
+        return $data;
     }
 }

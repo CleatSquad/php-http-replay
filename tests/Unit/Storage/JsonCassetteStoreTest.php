@@ -96,6 +96,58 @@ final class JsonCassetteStoreTest extends TestCase
         $store->load('version99');
     }
 
+    public function testSaveAndLoadWithExchangeTimestamps(): void
+    {
+        $store = new JsonCassetteStore($this->tempDir);
+        $req = new Request('GET', 'https://api.example.com/status');
+        $res = new Response(200, [], '{"status":"ok"}');
+        $timestamp = 1700000000;
+
+        $cassette = new Cassette(2, [
+            new Exchange($req, $res, $timestamp),
+        ]);
+
+        $store->save('timestamped_cassette', $cassette);
+        $loaded = $store->load('timestamped_cassette');
+
+        $this->assertNotNull($loaded);
+        $this->assertSame($timestamp, $loaded->get(0)->recordedAt());
+    }
+
+    public function testLoadLegacyCassetteWithoutRecordedAtSucceeds(): void
+    {
+        mkdir($this->tempDir, 0777, true);
+        $legacyJson = <<<'JSON'
+{
+    "version": 2,
+    "metadata": {},
+    "exchanges": [
+        {
+            "request": {
+                "method": "POST",
+                "uri": "https://api.example.com/v1/chat",
+                "headers": {},
+                "body": "{\"hello\":\"world\"}"
+            },
+            "response": {
+                "status": 200,
+                "headers": {},
+                "body": "{\"reply\":\"ok\"}"
+            }
+        }
+    ]
+}
+JSON;
+        file_put_contents($this->tempDir . '/legacy.json', $legacyJson);
+
+        $store = new JsonCassetteStore($this->tempDir);
+        $loaded = $store->load('legacy');
+
+        $this->assertNotNull($loaded);
+        $this->assertCount(1, $loaded);
+        $this->assertNull($loaded->get(0)->recordedAt(), 'legacy fixture without recorded_at must deserialize with null timestamp');
+    }
+
     private function removeDirectory(string $dir): void
     {
         if (!is_dir($dir)) {

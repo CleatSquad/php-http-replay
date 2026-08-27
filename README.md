@@ -198,6 +198,16 @@ $cassette = PhpVcrCassetteImporter::fromYaml(__DIR__ . '/fixtures/legacy.yml');
 Everything under `src/` that is `public` follows [Semantic Versioning](https://semver.org),
 except `src/Internal/`, which is excluded and may change in any release.
 
+## Documentation
+
+- [ARCHITECTURE.md](ARCHITECTURE.md) — components, and where a request is
+  intercepted.
+- [docs/upstream/php-vcr/](docs/upstream/php-vcr/) — what of this library can be
+  contributed back to [`php-vcr/php-vcr`](https://github.com/php-vcr/php-vcr):
+  the [review](docs/upstream/php-vcr/review.md) and its decision matrix, the
+  four [proposals](docs/upstream/php-vcr/proposals.md), and the evidence behind
+  each. Proposal #1 is an open draft PR upstream.
+
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) and [UPGRADE.md](UPGRADE.md). Bug reports and pull requests are

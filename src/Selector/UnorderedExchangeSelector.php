@@ -6,13 +6,26 @@ namespace CleatSquad\HttpReplay\Selector;
 
 use CleatSquad\HttpReplay\Contract\ExchangeSelectorInterface;
 use CleatSquad\HttpReplay\Contract\RequestMatcherInterface;
-use CleatSquad\HttpReplay\Model\Exchange;
 use CleatSquad\HttpReplay\Model\ExchangeSelectionResult;
 use CleatSquad\HttpReplay\Model\MatchResult;
 use Psr\Http\Message\RequestInterface;
 
 final class UnorderedExchangeSelector implements ExchangeSelectorInterface
 {
+    /** @var (\Closure(): int)|null */
+    private ?\Closure $clock;
+
+    /**
+     * @param ?int $exchangeTtl Time-to-live in seconds for an exchange. Expired exchanges are ignored during selection.
+     * @param ?(\Closure(): int) $clock Custom clock callable for testing.
+     */
+    public function __construct(
+        private ?int $exchangeTtl = null,
+        ?\Closure $clock = null,
+    ) {
+        $this->clock = $clock;
+    }
+
     public function select(
         RequestInterface $request,
         array $exchanges,
@@ -27,6 +40,7 @@ final class UnorderedExchangeSelector implements ExchangeSelectorInterface
             return ExchangeSelectionResult::exhausted($totalExchanges, MatchResult::mismatch($differences));
         }
 
+        $now = $this->clock !== null ? ($this->clock)() : time();
         $inspectedCount = 0;
         $bestCandidateIndex = -1;
         $bestMatchResult = null;
@@ -34,6 +48,10 @@ final class UnorderedExchangeSelector implements ExchangeSelectorInterface
 
         foreach ($exchanges as $i => $recordedExchange) {
             if (isset($consumedIndices[$i])) {
+                continue;
+            }
+
+            if ($this->exchangeTtl !== null && $this->exchangeTtl > 0 && $recordedExchange->isExpired($this->exchangeTtl, $now)) {
                 continue;
             }
 
