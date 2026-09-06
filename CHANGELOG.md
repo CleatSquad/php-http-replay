@@ -5,6 +5,12 @@ All notable changes to `cleatsquad/php-http-replay` will be documented in this f
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.1] - 2026-09-06
+
+### Fixed
+
+- `guzzlehttp/guzzle` and `symfony/yaml` moved from `require-dev` to `require`. `src/PhpVcr/PhpVcrCassetteImporter.php`, the Guzzle integration and `JsonCassetteStore` all import classes from both, so a `--no-dev` install left them undefined at runtime.
+
 ## [2.1.0] - 2026-08-27
 
 ### Added
