@@ -15,7 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- `RotatingJsonCassetteStore`: caps exchanges per file and total files retained, pruning the oldest file once the limit is exceeded (RFC-0155).
+- `RotatingJsonCassetteStore`: caps exchanges per file and total files retained, pruning the oldest file once the limit is exceeded.
 - Exchange TTL: an exchange older than the configured lifetime is treated as expired during replay instead of being matched forever.
 - `OptionsAwareClientInterface` and `GuzzleOptionsAwareClient`: lets a real client honor per-request options (`timeout`, `connect_timeout`) that plain PSR-18 `sendRequest()` has no slot for, forwarded only in Passthrough/Record/RecordOnce.
 - `docs/upstream/php-vcr/`: what of this library could be contributed back to [`php-vcr/php-vcr`](https://github.com/php-vcr/php-vcr), with the review, proposals and evidence behind each.
